@@ -1,0 +1,17 @@
+\set ON_ERROR_STOP on
+\getenv wm_app_password WM_APP_PASSWORD
+
+SELECT CASE
+    WHEN EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'wm_app')
+        THEN format('ALTER ROLE wm_app LOGIN PASSWORD %L', :'wm_app_password')
+    ELSE format('CREATE ROLE wm_app LOGIN PASSWORD %L', :'wm_app_password')
+END \gexec
+
+-- The Express administrator cannot SET ROLE to wm_app. Keep the database under
+-- the administrator and grant wm_app only its required privileges below.
+SELECT 'CREATE DATABASE walking_meditation'
+WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'walking_meditation') \gexec
+
+\connect walking_meditation
+GRANT CONNECT ON DATABASE walking_meditation TO wm_app;
+GRANT USAGE, CREATE ON SCHEMA public TO wm_app;

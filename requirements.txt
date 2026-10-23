@@ -1,0 +1,4 @@
+-r requirements-infra.lock
+
+# Local Aurora Express initialization without requiring the psql executable.
+psycopg[binary]>=3.2,<4

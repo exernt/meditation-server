@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+cdk.out/
+node_modules/
+.env
+.env.*
+!.env.example
+var/
+*.mp3
+*.wav
+*.pem
+*.key
+

@@ -1,0 +1,10 @@
+{
+  "app": "python infra/app.py",
+  "context": {
+    "@aws-cdk/core:defaultCrossStackReferences": "strong",
+    "project": "wm",
+    "region": "ap-southeast-2",
+    "githubRepository": "exernt/meditation-server"
+  }
+}
+
