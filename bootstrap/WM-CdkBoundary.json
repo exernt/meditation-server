@@ -60,7 +60,10 @@
       "Resource": "*",
       "Condition": {
         "StringEquals": {
-          "iam:AWSServiceName": "rds.amazonaws.com"
+          "iam:AWSServiceName": [
+            "rds.amazonaws.com",
+            "ops.apigateway.amazonaws.com"
+          ]
         }
       }
     },
