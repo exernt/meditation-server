@@ -4,7 +4,7 @@
     "@aws-cdk/core:defaultCrossStackReferences": "strong",
     "project": "wm",
     "region": "ap-southeast-2",
-    "githubRepository": "exernt/meditation-server"
+    "githubRepository": "exernt@176450248/meditation-server@1425480678"
   }
 }
 

@@ -84,9 +84,9 @@ npx cdk deploy WmIdentity --profile wm-admin --require-approval broadening
 This creates one GitHub OIDC provider and two roles:
 
 - `wm-dev-github-deployer`, trusted only for
-  `repo:exernt/meditation-server:environment:dev`;
+  `repo:exernt@176450248/meditation-server@1425480678:environment:dev`;
 - `wm-prod-github-deployer`, trusted only for
-  `repo:exernt/meditation-server:environment:production`.
+  `repo:exernt@176450248/meditation-server@1425480678:environment:production`.
 
 Record the two role ARNs from the CloudFormation outputs. If the repository is
 renamed or transferred, update and deploy the trust conditions before the old
