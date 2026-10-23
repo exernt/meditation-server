@@ -2,6 +2,7 @@
   "app": "python infra/app.py",
   "context": {
     "@aws-cdk/core:defaultCrossStackReferences": "strong",
+    "@aws-cdk/aws-apigateway:disableCloudWatchRole": true,
     "project": "wm",
     "region": "ap-southeast-2",
     "githubRepository": "exernt@176450248/meditation-server@1425480678"

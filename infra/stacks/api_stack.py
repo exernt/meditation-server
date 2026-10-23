@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from aws_cdk import Duration, Stack
+from aws_cdk import Duration, RemovalPolicy, Stack
 from aws_cdk import aws_apigateway as apigateway
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_lambda as lambda_
@@ -44,6 +44,7 @@ class ApiStack(Stack):
             log_group_name=f"/aws/lambda/{config.prefix}-api",
             retention=(logs.RetentionDays.THREE_MONTHS if config.is_production else logs.RetentionDays.TWO_WEEKS),
         )
+        api_logs.apply_removal_policy(RemovalPolicy.RETAIN_ON_UPDATE_OR_DELETE)
         api_logs.grant_write(api_role)
 
         api_role.add_to_policy(
@@ -161,11 +162,15 @@ class ApiStack(Stack):
             log_group_name=f"/aws/apigateway/{config.prefix}",
             retention=(logs.RetentionDays.THREE_MONTHS if config.is_production else logs.RetentionDays.TWO_WEEKS),
         )
+        access_logs.apply_removal_policy(RemovalPolicy.RETAIN_ON_UPDATE_OR_DELETE)
         self.api = apigateway.RestApi(
             self,
             "RestApi",
             rest_api_name=f"{config.prefix}-api",
             endpoint_types=[apigateway.EndpointType.REGIONAL],
+            # API Gateway exposes one CloudWatch logging role per account and Region.
+            # It is configured once as an account prerequisite so dev and prod do
+            # not compete to own the singleton AWS::ApiGateway::Account resource.
             cloud_watch_role=False,
             deploy_options=apigateway.StageOptions(
                 stage_name=config.stage,

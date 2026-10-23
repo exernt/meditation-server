@@ -9,8 +9,10 @@ Target region: Asia Pacific (Sydney), `ap-southeast-2`
 This guide tracks the setup and implementation order for the project's current
 single-account, free-tier-shaped architecture. It deliberately avoids baseline
 resources with fixed hourly costs: no NAT Gateway, RDS Proxy, custom domain, or
-always-on development/production pair. WAF is created only for production and
-is a required public-launch control.
+always-on development/production pair while Free Plan validation is underway.
+After the required paid-plan upgrade, separate development and production
+stacks may coexist. WAF is created only for production and is a required
+public-launch control.
 
 The Free Plan is not an unlimited or permanent zero-cost plan. The current
 requirement is to complete one full synthetic development deployment and its
@@ -29,8 +31,8 @@ Create a deployment register in the repository and agree on these values:
 | AWS account | One account, owned by or transferable to the client |
 | AWS region | `ap-southeast-2` only |
 | Repository | `exernt/meditation-server` |
-| Live environments during development | One `dev` stack, synthetic data only |
-| Handover state | Clean `production` stack; remove `dev` after validation |
+| Free Plan validation state | One `dev` stack, synthetic data only |
+| Paid-plan operating state | Separate `dev` and `production` stacks; dev remains synthetic |
 | API hostname initially | Generated API Gateway URL |
 | GitHub environments | `dev` and `production`, both targeting the same account |
 | Resource prefix | `wm-dev-` / `wm-prod-` |
@@ -56,18 +58,20 @@ Inside the one account:
 1. Confirm the account can be handed to the client without transferring a
    student's personal email, phone, payment method, or MFA device.
 2. Record the 12-digit account ID and the current Free Tier/credit expiry.
-3. Keep only one deployed application environment during development.
+3. Keep only one deployed application environment during Free Plan validation;
+   permit separate dev and production stacks only after the paid-plan upgrade.
 4. Give `dev` and `production` distinct stack names, roles, secrets, and tags.
 5. Never copy production data into `dev`; stack naming is not a security
    boundary.
 6. At handover, deploy production from a reviewed release, test it, then follow
    [`account-handover-checklist.md`](account-handover-checklist.md) to transfer
-   ownership and billing before removing development and its synthetic data.
+   ownership and billing. Retain development only as a synthetic-data feature
+   validation environment with separately approved cost limits.
 
-If the client later requires a permanent test environment or stronger team
-isolation, move production and non-production into separate accounts. The code
-and naming scheme should permit that later change, but it is not part of the
-current build.
+Separate stacks provide operational organization, not a hard security or quota
+boundary. If the client later requires stronger team isolation, move production
+and non-production into separate accounts. The code and naming scheme should
+permit that later change, but it is not part of the current build.
 
 Also defer AWS Control Tower, Service Control Policies, organization/tag/backup
 policies, organization-wide CloudTrail, delegated security administrators,
@@ -495,7 +499,7 @@ or billing boundaries.
 References: [AWS IAM GitHub OIDC guidance](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_create_for-idp_oidc.html)
 and [`configure-aws-credentials`](https://github.com/aws-actions/configure-aws-credentials).
 
-## 15. Define the CI/CD lifecycle for one live stack
+## 15. Define the CI/CD lifecycle for separate environments
 
 ### Pull-request CI — no AWS credentials
 
@@ -524,17 +528,20 @@ and [`configure-aws-credentials`](https://github.com/aws-actions/configure-aws-c
 - create a clean production stack rather than promoting the development data;
 - apply backward-compatible migrations and smoke tests without sensitive logs;
 - confirm backup/restore, alarms, client access, billing, and runbooks; and
-- remove the development stack after sign-off and the agreed retention window.
+- retain development only with synthetic data, separate secrets and database,
+  and an approved ongoing budget.
 
 Use GitHub concurrency groups so two jobs cannot mutate the same environment.
-Avoid keeping both stacks running longer than the handover validation window.
+Dev and production jobs may run concurrently, so neither environment stack may
+own account/Region singletons such as the API Gateway CloudWatch logging role.
 
 ## 16. Implement the CDK stacks in order
 
 Keep the stack set small:
 
 1. **Account access/cost setup** — GitHub OIDC provider and deployer roles where
-   these are not managed manually; budgets and notification topics.
+   these are not managed manually; the shared API Gateway CloudWatch logging
+   role setting; budgets and notification topics.
 2. **Aurora prerequisite** — one externally provisioned Aurora PostgreSQL
    Express cluster for Free Plan verification, with Data API enabled.
 3. **Data stack** — generated `wm_app` application secret and the documented
@@ -590,6 +597,8 @@ speculatively now.
 - [ ] Budget, Free Tier, and anomaly alerts reach a maintained mailbox.
 - [ ] Sydney is selected and quotas are documented.
 - [ ] CDK is bootstrapped once with termination protection.
+- [ ] API Gateway account settings in Sydney point to the shared CloudWatch
+      logging role; environment API stacks do not own `AWS::ApiGateway::Account`.
 - [ ] The current `WM-CdkBoundary` version permits the required `rds-data` actions.
 - [ ] One development Aurora cluster was created with Express Configuration;
       Data API is enabled and its ARN is recorded.
@@ -617,7 +626,6 @@ Do not accidentally reintroduce these while following older EC2/Heroku notes:
 - WAF in development (production WAF remains mandatory);
 - Route 53/ACM/custom domain before stable URL or App Link ownership requires it;
 - customer-managed KMS keys without an explicit key-management requirement;
-- simultaneously running dev and production after handover; and
 - multi-account or multi-region deployment without a requirement.
 
 The first implementation milestone is a package skeleton, Data API repository

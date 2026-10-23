@@ -33,9 +33,11 @@ delete the Express cluster.
 
 `WmIdentity` can be synthesized and deployed without workload context. Workload
 stacks require explicit database, concurrency, cost, secret, and email context.
-The intended validation state is one synthetic `dev` deployment on the Free
-Plan. The client must upgrade to a paid plan before the Free Plan expires and
-before the long-lived production rollout.
+The intended Free Plan validation state is one synthetic `dev` deployment. The
+client must upgrade to a paid plan before the Free Plan expires and before the
+long-lived production rollout. After that upgrade, separate `dev` and `prod`
+stacks may coexist; development remains synthetic and must never receive a copy
+of production data.
 
 See `docs/aws-account-and-repo-setup.md`, `docs/github-actions-oidc.md`, and
 `docs/account-handover-checklist.md` before bootstrapping or deploying.

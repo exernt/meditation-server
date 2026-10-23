@@ -102,16 +102,22 @@ and all surrounding workload resources.
 
 ## Account and environment model
 
-The project will use one AWS account. During development, keep only one
+The project will use one AWS account. During Free Plan validation, keep only one
 deployed `dev` stack and use synthetic data. At handover, deploy a clean
-`production` stack from the reviewed release, transfer operational ownership,
-validate it, and remove the development stack after its temporary data is no
-longer needed.
+`production` stack from the reviewed release and transfer operational ownership.
+After the paid-plan upgrade, the client may retain a separate `dev` stack for
+feature validation. It must use its own Aurora cluster, secrets, queues,
+functions, API, and log groups and must continue to contain synthetic data only.
 
-Logical stack names, roles, secrets, and tags still include the environment
-name, but this is only resource organization rather than a security boundary.
-Never copy production data into development. If the client later needs a long-lived test
-environment, a separate AWS account is the preferred future boundary.
+API Gateway's CloudWatch logging role is an account-and-Region setting rather
+than an environment resource. Configure that role once in `ap-southeast-2` and
+let both REST APIs use it; the environment API stacks must not create competing
+`AWS::ApiGateway::Account` resources.
+
+Logical stack names, roles, secrets, and tags include the environment name, but
+this is resource organization rather than a security or quota boundary. Never
+copy production data into development. If the client later requires stronger
+isolation, separate AWS accounts are the preferred future boundary.
 
 ## Request flows
 
@@ -353,8 +359,9 @@ cross-border disclosure, consent wording, and research-record retention.
 
 ### Phase 0 - decisions and threat model
 
-- Confirm the single account owner, Sydney region, temporary development stack,
-  recovery objectives, and billing handover.
+- Confirm the single account owner, Sydney region, synthetic development
+  environment, production environment, recovery objectives, and billing
+  handover.
 - Inventory data sent to Google and OpenAI and define retention and consent.
 - Record Polly as the initial optional provider and preserve `disabled` mode.
 
@@ -394,7 +401,6 @@ cross-border disclosure, consent wording, and research-record retention.
 - RDS Proxy, NAT Gateway, and Lambda VPC attachment;
 - customer-managed KMS keys;
 - provisioned concurrency;
-- long-lived parallel development and production stacks;
 - server-side audio storage, signed audio URLs, and alternate TTS providers; and
 - multi-account or multi-region deployment.
 
