@@ -168,4 +168,3 @@ class GenerationJobRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     kind: Literal["park", "without_park"]
     payload: dict[str, Any]
-    include_audio: bool = False

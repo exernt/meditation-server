@@ -15,9 +15,9 @@ owners must decide the lawful basis, wording, retention, and participant rights.
 | Consent | Consent text/version and acceptance timestamp | Ethics and consent evidence | Aurora |
 | Questionnaire data | Questionnaire definitions, issued rounds, answers and submission timestamps | Research data collection | Aurora |
 | Feedback | Rating/comment and associated user/study context where present | Product/research evaluation | Aurora |
-| Location and route data | Origin/destination coordinates, park waypoint, route polylines, step coordinates/instructions, distance, duration, elevation and progress while walking | Route planning and location-triggered meditation | Device memory/cache; transient processing; generated route/script response |
-| Meditation inputs | Free-text context, researcher script parameters, route labels, terrain, weather, nearby landmarks, duration and word budgets | Generate personalised narration | Aurora where study configuration is stored; transient generation processing |
-| Generated content | Narration text, prompt/model/version metadata, generated audio cached on device | Deliver the meditation | API response and device files; server persistence only where explicitly enabled |
+| Location and route data | Origin/destination coordinates, park waypoint, route polylines, step coordinates/instructions, distance, duration, elevation and progress while walking | Route planning and location-triggered meditation | Device memory/cache; transient processing; active Aurora generation job; generated route/script response retained for up to seven days |
+| Meditation inputs | Free-text context, researcher script parameters, route labels, terrain, weather, nearby landmarks, duration and word budgets | Generate personalised narration | Aurora study configuration; active generation job request cleared when the job becomes terminal |
+| Generated content | Narration text, prompt/model/version metadata, generated audio cached on device | Deliver the meditation | Aurora/API generation result for up to seven days; app-private device files |
 | Operational metadata | Request ID, status code, route template, duration, error category, queue message/job IDs | Reliability and security monitoring | CloudWatch/CloudTrail |
 
 Passwords, raw access/refresh/reset/verification tokens, request bodies,

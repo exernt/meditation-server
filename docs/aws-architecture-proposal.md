@@ -180,25 +180,27 @@ limit, move it to the existing job API.
 Treat coordinates as transient request data:
 
 - never log request bodies, coordinates, polylines, or authorization headers;
-- do not persist route history by default;
+- do not persist route history beyond the bounded seven-day generation result
+  needed for asynchronous mobile retrieval;
 - send Google only the coordinates necessary for the selected operation; and
 - remove exact coordinates and account identity from OpenAI prompts.
 
 ### Script and optional audio generation
 
-The asynchronous job contract below is the target design, not the current API.
-The migrated application currently exposes the legacy synchronous
+The asynchronous job contract below is implemented locally but has not yet
+been deployed over the synthetic development baseline. The migrated application
+also retains the legacy synchronous
 `/route/generate-script/park` and `/route/generate-script/without-park` paths
 with a deterministic fallback generator, plus a separate authenticated
-`POST /tts` endpoint. The OpenAI/elevation/nearby-context worker and job routes
-remain to be implemented.
+`POST /tts` endpoint. The asynchronous worker currently uses that same fallback;
+the OpenAI/elevation/nearby-context processor remains to be implemented.
 
-Target asynchronous contract:
+Asynchronous contract:
 
 ```text
 POST /v1/generation-jobs      -> 202 { job_id, status_url }
 GET  /v1/generation-jobs/{id} -> queued | running | complete | failed
-GET  /v1/generation-jobs/{id}/result -> script + optional audio metadata
+GET  /v1/generation-jobs/{id}/result -> generated script result
 ```
 
 The API writes an idempotent job and outbox row in one transaction, then sends
@@ -408,9 +410,11 @@ cross-border disclosure, consent wording, and research-record retention.
   integration because the legacy script screen still sends obsolete
   Qwen-specific request fields.
 - Remaining: live Polly/device and disabled-mode testing.
-- Remaining: job/outbox tables, polling endpoints, idempotency, worker
-  implementation, DLQ recovery, and the OpenAI/elevation/nearby-context script
-  generator. The current script routes use the deterministic fallback contract.
+- Implemented locally: job/outbox tables, polling endpoints, idempotent
+  submission, scheduled outbox recovery/retention, and conditional worker job
+  transitions. The worker currently executes the deterministic fallback.
+- Remaining: DLQ recovery exercises and the OpenAI/elevation/nearby-context
+  script generator.
 
 ### Phase 4 - privacy and readiness
 

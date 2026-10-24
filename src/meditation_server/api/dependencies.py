@@ -11,8 +11,8 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from meditation_server.auth.security import decode_access_token
 from meditation_server.repositories.asyncpg import AsyncpgExecutor
-from meditation_server.repositories.data_api import RdsDataApiExecutor
 from meditation_server.repositories.executor import DatabaseExecutor
+from meditation_server.repositories.factory import create_data_api_executor_from_env
 
 
 @dataclass(frozen=True)
@@ -28,12 +28,7 @@ async def create_executor() -> DatabaseExecutor:
     database_url = os.getenv("DATABASE_URL", "").strip()
     if database_url:
         return await AsyncpgExecutor.connect(database_url, min_size=1, max_size=5)
-    return RdsDataApiExecutor(
-        resource_arn=os.environ["DATABASE_RESOURCE_ARN"],
-        secret_arn=os.environ["DATABASE_SECRET_ARN"],
-        database=os.environ["DATABASE_NAME"],
-        region_name=os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION"),
-    )
+    return create_data_api_executor_from_env()
 
 
 def get_database(request: Request) -> DatabaseExecutor:
