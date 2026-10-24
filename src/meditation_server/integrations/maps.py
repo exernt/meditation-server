@@ -11,6 +11,7 @@ from meditation_server.api.models import LatLng, RouteStepInfo, WalkRouteRequest
 
 ROUTES_URL = "https://routes.googleapis.com/directions/v2:computeRoutes"
 PLACES_URL = "https://places.googleapis.com/v1/places:searchText"
+MAX_CANDIDATES_PER_PLACE_TYPE = 3
 
 
 def _key() -> str:
@@ -74,17 +75,41 @@ async def _parks(client: httpx.AsyncClient, polyline: str) -> list[dict[str, Any
         )
         response.raise_for_status()
         return response.json().get("places") or []
-    raw = (await search("city_park", "city park")) + (await search("garden", "garden"))
-    unique = {}
-    for place in raw:
-        location = place.get("location") or {}
-        if place.get("id") and location.get("latitude") is not None and location.get("longitude") is not None:
-            unique[place["id"]] = {
-                "place_id": place["id"], "name": (place.get("displayName") or {}).get("text") or "(unnamed park)",
-                "lat": float(location["latitude"]), "lon": float(location["longitude"]),
-                "primary_type": place.get("primaryType"), "types": list(place.get("types") or []),
-            }
-    return list(unique.values())[:3]
+
+    city_parks, gardens = await asyncio.gather(
+        search("city_park", "city park"),
+        search("garden", "garden"),
+    )
+    candidates: list[dict[str, Any]] = []
+    seen_place_ids: set[str] = set()
+    for places in (city_parks, gardens):
+        retained_for_type = 0
+        for place in places:
+            location = place.get("location") or {}
+            place_id = place.get("id")
+            if (
+                not place_id
+                or place_id in seen_place_ids
+                or location.get("latitude") is None
+                or location.get("longitude") is None
+            ):
+                continue
+            candidates.append(
+                {
+                    "place_id": place_id,
+                    "name": (place.get("displayName") or {}).get("text")
+                    or "(unnamed park)",
+                    "lat": float(location["latitude"]),
+                    "lon": float(location["longitude"]),
+                    "primary_type": place.get("primaryType"),
+                    "types": list(place.get("types") or []),
+                }
+            )
+            seen_place_ids.add(place_id)
+            retained_for_type += 1
+            if retained_for_type == MAX_CANDIDATES_PER_PLACE_TYPE:
+                break
+    return candidates
 
 
 async def generate_walk_route(payload: WalkRouteRequest) -> dict[str, Any]:
@@ -95,11 +120,18 @@ async def generate_walk_route(payload: WalkRouteRequest) -> dict[str, Any]:
             return response
         parks = await _parks(client, baseline["polyline"])
         semaphore = asyncio.Semaphore(6)
+
+        async def route_leg(origin: LatLng, destination: LatLng):
+            async with semaphore:
+                return await _route(client, origin, destination)
+
         async def evaluate(park):
             try:
                 point = LatLng(lat=park["lat"], lon=park["lon"])
-                async with semaphore:
-                    to_park, from_park = await asyncio.gather(_route(client, payload.source, point), _route(client, point, payload.destination))
+                to_park, from_park = await asyncio.gather(
+                    route_leg(payload.source, point),
+                    route_leg(point, payload.destination),
+                )
             except Exception:
                 return None
             detour = to_park["duration_s"] + from_park["duration_s"]
