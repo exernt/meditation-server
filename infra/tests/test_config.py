@@ -52,6 +52,17 @@ def test_accepts_optional_api_reserved_concurrency() -> None:
     assert config.api_reserved_concurrency == 5
 
 
+def test_accepts_api_gateway_stage_in_email_verification_link() -> None:
+    link = (
+        "https://example.execute-api.ap-southeast-2.amazonaws.com/"
+        "dev/auth/email-verification/open"
+    )
+
+    config = EnvironmentConfig.from_app(_app(emailVerificationLinkBase=link))
+
+    assert config.email_verification_link_base == link
+
+
 def test_rejects_zero_api_reserved_concurrency() -> None:
     with pytest.raises(ValueError, match="positive integer"):
         EnvironmentConfig.from_app(_app(apiReservedConcurrency=0))

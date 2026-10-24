@@ -96,7 +96,7 @@ def email_verification_link_base() -> str:
     local = parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1"}
     if not (local or (parsed.scheme == "https" and parsed.netloc)):
         raise ValueError("EMAIL_VERIFICATION_LINK_BASE must be local HTTP or HTTPS")
-    if parsed.path != "/auth/email-verification/open" or parsed.query or parsed.fragment:
+    if not parsed.path.endswith("/auth/email-verification/open") or parsed.query or parsed.fragment:
         raise ValueError("EMAIL_VERIFICATION_LINK_BASE must end in /auth/email-verification/open")
     return value
 

@@ -92,7 +92,7 @@ class EnvironmentConfig:
         if (
             parsed_link.scheme != "https"
             or not parsed_link.netloc
-            or parsed_link.path != "/auth/email-verification/open"
+            or not parsed_link.path.endswith("/auth/email-verification/open")
             or parsed_link.query
             or parsed_link.fragment
         ):
