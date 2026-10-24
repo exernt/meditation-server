@@ -1,0 +1,4 @@
+-r requirements-lambda.txt
+
+# Generation-worker-only dependency.
+openai==2.21.0

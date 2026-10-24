@@ -18,13 +18,13 @@ The FastAPI boundary, native authentication flow, study, questionnaire,
 questionnaire-response, feedback, Google route, and Polly TTS endpoints have
 been ported. They use the shared Data API executor in AWS and preserve the
 legacy paths, validation rules, authorization gates, response status codes, and
-refresh-token/session semantics. Script endpoints preserve the legacy response
-contract through the deterministic fallback generator. The asynchronous
-job/outbox API, recovery and retention maintenance, and idempotent SQS worker
-lifecycle are implemented locally; that worker also uses the fallback generator
-until the OpenAI/elevation/nearby-context processor is added. Production has not
-been deployed. See [`docs/generation-jobs.md`](docs/generation-jobs.md) for the
-job contract and timing decisions.
+refresh-token/session semantics. Synchronous script endpoints preserve the
+legacy response contract through the deterministic fallback generator. Queued
+generation jobs use the idempotent SQS worker, Google weather/elevation/nearby
+context, and schema-constrained OpenAI narration, with the deterministic
+generator retained as a safe fallback. Production has not been deployed. See
+[`docs/generation-jobs.md`](docs/generation-jobs.md) for the job contract and
+timing decisions.
 
 The migrated application is implemented and locally tested in the current
 working tree, but it has not yet been deployed over the verified synthetic

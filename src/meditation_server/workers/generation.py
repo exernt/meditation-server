@@ -15,7 +15,10 @@ from meditation_server.application.generation_jobs import (
     complete_generation_job,
     release_generation_job,
 )
-from meditation_server.integrations.scripts import with_park, without_park
+from meditation_server.integrations.generation_processor import (
+    generate_with_park,
+    generate_without_park,
+)
 from meditation_server.repositories.executor import DatabaseExecutor
 from meditation_server.repositories.factory import create_data_api_executor_from_env
 
@@ -92,9 +95,11 @@ async def _handle_record(record: dict[str, Any], database: DatabaseExecutor) -> 
 
 async def _generate(job: dict[str, Any]) -> dict[str, Any]:
     if job["kind"] == "park":
-        return await with_park(ScriptWithParkRequest.model_validate(job["request_payload"]))
+        return await generate_with_park(
+            ScriptWithParkRequest.model_validate(job["request_payload"])
+        )
     if job["kind"] == "without_park":
-        return await without_park(
+        return await generate_without_park(
             ScriptWithoutParkRequest.model_validate(job["request_payload"])
         )
     raise InvalidGenerationJob("Unsupported generation job kind")

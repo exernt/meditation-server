@@ -88,13 +88,17 @@ class GenerationStack(Stack):
             )
         )
         data_stack.application_secret.grant_read(worker_role)
+        google_secret = secretsmanager.Secret.from_secret_complete_arn(
+            self, "GoogleMapsSecret", config.google_maps_secret_arn
+        )
+        google_secret.grant_read(worker_role)
         openai_secret = secretsmanager.Secret.from_secret_complete_arn(
             self, "OpenAiSecret", config.openai_secret_arn
         )
         openai_secret.grant_read(worker_role)
 
         project_root = Path(__file__).resolve().parents[2]
-        def lambda_code():
+        def lambda_code(requirements_file: str):
             return lambda_.Code.from_asset(
                 str(project_root),
                 bundling=BundlingOptions(
@@ -102,7 +106,7 @@ class GenerationStack(Stack):
                     command=[
                         "bash",
                         "-c",
-                        "pip install --no-cache-dir -r /asset-input/requirements-lambda.txt -t /asset-output && cp -au /asset-input/src/. /asset-output/",
+                        f"pip install --no-cache-dir -r /asset-input/{requirements_file} -t /asset-output && cp -r /asset-input/src/. /asset-output/",
                     ],
                 ),
             )
@@ -112,7 +116,7 @@ class GenerationStack(Stack):
             function_name=f"{config.prefix}-generation-worker",
             runtime=lambda_.Runtime.PYTHON_3_14,
             handler="meditation_server.workers.generation.handler",
-            code=lambda_code(),
+            code=lambda_code("requirements-worker.txt"),
             role=worker_role,
             log_group=worker_logs,
             timeout=Duration.minutes(5),
@@ -122,7 +126,11 @@ class GenerationStack(Stack):
                 "DATABASE_RESOURCE_ARN": config.database_cluster_arn,
                 "DATABASE_SECRET_ARN": data_stack.application_secret.secret_arn,
                 "DATABASE_NAME": config.database_name,
+                "GOOGLE_MAPS_SECRET_ARN": google_secret.secret_arn,
                 "OPENAI_SECRET_ARN": openai_secret.secret_arn,
+                "OPENAI_MODEL": "gpt-6-luna",
+                "ENABLE_NEARBY_CONTEXT": "true",
+                "SCRIPT_FALLBACK_ENABLED": "true",
             },
         )
         self.queue.grant_consume_messages(worker_role)
@@ -169,7 +177,7 @@ class GenerationStack(Stack):
             function_name=f"{config.prefix}-generation-maintenance",
             runtime=lambda_.Runtime.PYTHON_3_14,
             handler="meditation_server.workers.maintenance.handler",
-            code=lambda_code(),
+            code=lambda_code("requirements-lambda.txt"),
             role=maintenance_role,
             log_group=maintenance_logs,
             timeout=Duration.minutes(1),

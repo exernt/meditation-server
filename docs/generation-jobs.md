@@ -1,10 +1,23 @@
 # Generation job lifecycle
 
 The asynchronous generation boundary is implemented with Aurora PostgreSQL,
-an SQS queue, an on-demand Lambda worker, and a transactional outbox. The
-worker currently runs the deterministic fallback generator so the lifecycle can
-be exercised before the OpenAI/elevation/nearby-context integration replaces
-that processor.
+an SQS queue, an on-demand Lambda worker, and a transactional outbox. The worker
+enriches client-supplied route steps with Google weather, elevation and nearby
+context, then asks `gpt-6-luna` for narration constrained by a strict JSON
+Schema and validates its spoken-word budgets. A deterministic, walking-safe
+fallback is returned if a provider is unavailable or generated narration is
+invalid; the result's `fallback` field makes that behaviour explicit.
+
+Enrichment is bounded by route legs rather than navigation-step count. Each
+leg batches its step boundaries into one Elevation request and performs one
+Nearby Search around the distance-weighted midpoint segment. A park route has
+two legs, so generation makes two Elevation calls, two Nearby Search calls,
+and one Weather call regardless of its usual number of navigation steps.
+
+Only route labels/instructions, terrain classifications, nearby feature names,
+weather, word budgets, the user's stated meditation context and approved study
+parameters are sent to OpenAI. Exact coordinates, polylines, user IDs, account
+data and authentication material are excluded from the prompt.
 
 ## API contract
 

@@ -143,7 +143,7 @@ class ApiStack(Stack):
                     command=[
                         "bash",
                         "-c",
-                        "pip install --no-cache-dir -r /asset-input/requirements-lambda.txt -t /asset-output && cp -au /asset-input/src/. /asset-output/",
+                        "pip install --no-cache-dir -r /asset-input/requirements-lambda.txt -t /asset-output && cp -r /asset-input/src/. /asset-output/",
                     ],
                 ),
             ),

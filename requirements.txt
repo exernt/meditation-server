@@ -1,7 +1,7 @@
 -r requirements-infra.lock
 
-# Runtime dependencies are also packaged into the API Lambda.
--r requirements-lambda.txt
+# Runtime dependencies for both the API and generation worker.
+-r requirements-worker.txt
 
 # Local migration transport.
 asyncpg>=0.30,<1

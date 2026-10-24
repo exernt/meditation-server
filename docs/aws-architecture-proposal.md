@@ -411,10 +411,10 @@ cross-border disclosure, consent wording, and research-record retention.
   Qwen-specific request fields.
 - Remaining: live Polly/device and disabled-mode testing.
 - Implemented locally: job/outbox tables, polling endpoints, idempotent
-  submission, scheduled outbox recovery/retention, and conditional worker job
-  transitions. The worker currently executes the deterministic fallback.
-- Remaining: DLQ recovery exercises and the OpenAI/elevation/nearby-context
-  script generator.
+  submission, scheduled outbox recovery/retention, conditional worker job
+  transitions, and the OpenAI/elevation/weather/nearby-context script generator
+  with a deterministic safety fallback.
+- Remaining: live provider and DLQ recovery exercises.
 
 ### Phase 4 - privacy and readiness
 

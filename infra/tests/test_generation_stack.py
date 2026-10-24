@@ -51,6 +51,23 @@ def test_generation_stack_has_worker_maintenance_and_schedules(monkeypatch) -> N
         },
     )
     template.has_resource_properties(
+        "AWS::Lambda::Function",
+        {
+            "Handler": "meditation_server.workers.generation.handler",
+            "Environment": {
+                "Variables": assertions.Match.object_like(
+                    {
+                        "GOOGLE_MAPS_SECRET_ARN": assertions.Match.any_value(),
+                        "OPENAI_SECRET_ARN": assertions.Match.any_value(),
+                        "OPENAI_MODEL": "gpt-6-luna",
+                        "ENABLE_NEARBY_CONTEXT": "true",
+                        "SCRIPT_FALLBACK_ENABLED": "true",
+                    }
+                )
+            },
+        },
+    )
+    template.has_resource_properties(
         "AWS::Scheduler::Schedule",
         {
             "ScheduleExpression": "cron(15 3 * * ? *)",

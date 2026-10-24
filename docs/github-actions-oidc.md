@@ -144,7 +144,7 @@ Configure these variables separately in each environment:
 | `WORKER_MAX_CONCURRENCY` | SQS event-source maximum concurrency |
 | `MONTHLY_BUDGET_USD` | Approved monthly budget |
 | `BUDGET_ALERT_EMAIL` | Maintained operational address |
-| `GOOGLE_MAPS_SECRET_ARN` | Existing Secrets Manager ARN |
+| `GOOGLE_MAPS_SECRET_ARN` | Existing Secrets Manager ARN; API and generation worker |
 | `OPENAI_SECRET_ARN` | Existing Secrets Manager ARN; worker only |
 | `PASSWORD_RESET_FROM_EMAIL` | Verified SES sender |
 | `EMAIL_VERIFICATION_LINK_BASE` | HTTPS API URL ending in `/auth/email-verification/open` |

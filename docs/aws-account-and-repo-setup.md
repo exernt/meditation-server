@@ -571,7 +571,7 @@ for an explicit requirement with a named rotation/deletion owner.
 
 | Variable | Initial AWS target |
 | --- | --- |
-| `GOOGLE_MAPS_API_KEY` | Exact Secrets Manager secret, API/route component only |
+| `GOOGLE_MAPS_API_KEY` | Exact Secrets Manager secret, API/route and generation worker components |
 | `OPENAI_API_KEY` | Exact Secrets Manager secret, worker only |
 | `DATABASE_RESOURCE_ARN` | Aurora cluster ARN in environment/config |
 | `DATABASE_SECRET_ARN` | CDK-created `wm_app` secret ARN in environment/config |

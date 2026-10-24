@@ -130,3 +130,60 @@ def external_secret(arn_env: str, *preferred_keys: str) -> str:
             if isinstance(candidate, str) and candidate:
                 return candidate
     raise ValueError(f"{arn_env} does not contain a usable API key")
+
+
+def _non_negative_int(name: str, default: int) -> int:
+    try:
+        value = int(os.getenv(name, str(default)))
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an integer") from exc
+    if value < 0:
+        raise ValueError(f"{name} cannot be negative")
+    return value
+
+
+def _positive_float(name: str, default: float) -> float:
+    try:
+        value = float(os.getenv(name, str(default)))
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a number") from exc
+    if value <= 0:
+        raise ValueError(f"{name} must be greater than zero")
+    return value
+
+
+def _boolean(name: str, default: bool) -> bool:
+    raw = os.getenv(name, "true" if default else "false").strip().casefold()
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off", ""}:
+        return False
+    raise ValueError(f"{name} must be a boolean")
+
+
+def google_maps_api_key() -> str:
+    return external_secret("GOOGLE_MAPS_SECRET_ARN", "api_key", "key", "GOOGLE_MAPS_API_KEY")
+
+
+def openai_api_key() -> str:
+    return external_secret("OPENAI_SECRET_ARN", "api_key", "key", "OPENAI_API_KEY")
+
+
+def openai_model() -> str:
+    return os.getenv("OPENAI_MODEL", "gpt-6-luna").strip()
+
+
+def openai_timeout_seconds() -> float:
+    return _positive_float("OPENAI_TIMEOUT_SECONDS", 60.0)
+
+
+def openai_max_retries() -> int:
+    return _non_negative_int("OPENAI_MAX_RETRIES", 2)
+
+
+def nearby_context_enabled() -> bool:
+    return _boolean("ENABLE_NEARBY_CONTEXT", False)
+
+
+def script_fallback_enabled() -> bool:
+    return _boolean("SCRIPT_FALLBACK_ENABLED", True)
