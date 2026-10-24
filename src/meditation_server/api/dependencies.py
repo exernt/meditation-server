@@ -98,6 +98,21 @@ async def get_verified_researcher(
 VerifiedResearcherDependency = Annotated[CurrentUser, Depends(get_verified_researcher)]
 
 
+async def get_admin_or_verified_researcher(
+    user: CurrentUserDependency,
+    database: DatabaseDependency,
+) -> CurrentUser:
+    if user.role == "admin":
+        return user
+    return await get_verified_researcher(user, database)
+
+
+AdminOrVerifiedResearcherDependency = Annotated[
+    CurrentUser,
+    Depends(get_admin_or_verified_researcher),
+]
+
+
 def require_role(*roles: str):
     async def check(user: CurrentUserDependency) -> CurrentUser:
         if user.role not in roles:

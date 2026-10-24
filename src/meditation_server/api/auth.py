@@ -379,6 +379,21 @@ async def register_researcher(payload: ResearcherRequest, user: CurrentUserDepen
     return {"institution": payload.institution, "verified_at": None, "role": "researcher"}
 
 
+@router.get("/admin/researchers/pending", dependencies=[Depends(require_role("admin"))])
+async def list_pending_researchers(db: DatabaseDependency):
+    result = await db.execute(
+        """SELECT profile.user_id, users.email, profile.institution,
+                  profile.created_on AS requested_at
+           FROM researcher_profiles AS profile
+           JOIN users ON users.id = profile.user_id
+           WHERE profile.verified_at IS NULL
+             AND users.role = 'researcher'::user_role
+             AND users.disabled_at IS NULL
+           ORDER BY profile.created_on ASC, profile.user_id ASC"""
+    )
+    return {"researchers": [dict(row) for row in result.rows]}
+
+
 @router.post("/admin/researchers/{user_id}/verify", dependencies=[Depends(require_role("admin"))])
 async def verify_researcher(user_id: UUID, db: DatabaseDependency):
     async with db.transaction() as tx:
@@ -387,6 +402,35 @@ async def verify_researcher(user_id: UUID, db: DatabaseDependency):
             raise HTTPException(status_code=404, detail="No researcher profile found for that user")
         await _record_event(db, "researcher_verified", user_id=user_id, transaction=tx)
     return {**result.rows[0], "role": "researcher"}
+
+
+@router.post("/admin/researchers/{user_id}/reject", dependencies=[Depends(require_role("admin"))])
+async def reject_researcher(user_id: UUID, db: DatabaseDependency):
+    async with db.transaction() as tx:
+        result = await db.execute(
+            """DELETE FROM researcher_profiles
+               WHERE user_id=:id::uuid AND verified_at IS NULL
+               RETURNING user_id""",
+            {"id": user_id},
+            transaction=tx,
+        )
+        if not result.rows:
+            raise HTTPException(status_code=404, detail="No pending researcher request found for that user")
+        await db.execute(
+            """UPDATE users
+               SET role='participant'::user_role, session_version=session_version+1
+               WHERE id=:id::uuid AND role='researcher'::user_role""",
+            {"id": user_id},
+            transaction=tx,
+        )
+        await db.execute(
+            """UPDATE refresh_tokens SET revoked_at=now()
+               WHERE user_id=:id::uuid AND revoked_at IS NULL""",
+            {"id": user_id},
+            transaction=tx,
+        )
+        await _record_event(db, "researcher_rejected", user_id=user_id, transaction=tx)
+    return _message("Researcher request rejected")
 
 
 @router.get("/me")

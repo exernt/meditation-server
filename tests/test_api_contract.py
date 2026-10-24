@@ -40,7 +40,9 @@ EXPECTED_MIGRATED_ROUTES = {
     ("POST", "/auth/logout-all"),
     ("POST", "/auth/admin/users/{user_id}/disable"),
     ("POST", "/auth/register-researcher"),
+    ("GET", "/auth/admin/researchers/pending"),
     ("POST", "/auth/admin/researchers/{user_id}/verify"),
+    ("POST", "/auth/admin/researchers/{user_id}/reject"),
     ("GET", "/auth/me"),
     ("POST", "/studies"),
     ("POST", "/studies/{study_id}/join"),
@@ -69,6 +71,7 @@ EXPECTED_MIGRATED_ROUTES = {
     ("POST", "/studies/{study_id}/questionnaires/{study_questionnaire_id}/responses"),
     ("GET", "/studies/{study_id}/questionnaires/{study_questionnaire_id}/responses"),
     ("POST", "/feedback"),
+    ("GET", "/feedback"),
 }
 
 

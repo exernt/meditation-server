@@ -4,7 +4,11 @@ from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException
 
-from meditation_server.api.dependencies import CurrentUserDependency, DatabaseDependency
+from meditation_server.api.dependencies import (
+    AdminOrVerifiedResearcherDependency,
+    CurrentUserDependency,
+    DatabaseDependency,
+)
 from meditation_server.api.models import FeedbackRequest
 
 
@@ -24,3 +28,18 @@ async def submit(payload: FeedbackRequest, user: CurrentUserDependency, db: Data
         {"id": uuid4(), "user": user.id, "study": payload.study_id, "category": payload.category, "rating": payload.rating, "comment": payload.comment},
     )
     return dict(result.rows[0])
+
+
+@router.get("")
+async def list_general_feedback(
+    _viewer: AdminOrVerifiedResearcherDependency,
+    db: DatabaseDependency,
+):
+    result = await db.execute(
+        """SELECT id, user_id, study_id, category::text AS category,
+                  rating, comment, created_at
+           FROM feedback
+           WHERE study_id IS NULL
+           ORDER BY created_at DESC"""
+    )
+    return {"feedback": [dict(row) for row in result.rows]}
