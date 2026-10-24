@@ -1,4 +1,6 @@
 aws-cdk-lib==2.274.0
+# cdk-nag v3 removes NagSuppressions and the Aspects integration used by infra/.
+# Keep the latest v2 release until that API migration is performed.
 cdk-nag==2.38.2
 constructs==10.8.1
 pytest==9.1.1

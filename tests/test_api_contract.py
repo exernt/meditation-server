@@ -6,6 +6,7 @@ from uuid import uuid4
 
 import jwt
 import pytest
+from fastapi.routing import iter_route_contexts
 
 from meditation_server.api.app import app
 from meditation_server.api.models import FeedbackRequest, RegisterRequest
@@ -74,8 +75,8 @@ EXPECTED_MIGRATED_ROUTES = {
 def test_migrated_fastapi_route_contract_is_complete() -> None:
     actual = {
         (method, route.path)
-        for route in app.routes
-        for method in getattr(route, "methods", set())
+        for route in iter_route_contexts(app.routes)
+        for method in (route.methods or set())
         if method not in {"HEAD", "OPTIONS"}
     }
     target_only = {
@@ -91,8 +92,8 @@ def test_migrated_fastapi_route_contract_is_complete() -> None:
 def test_legacy_created_status_codes_are_preserved() -> None:
     created = {
         (method, route.path)
-        for route in app.routes
-        for method in getattr(route, "methods", set())
+        for route in iter_route_contexts(app.routes)
+        for method in (route.methods or set())
         if getattr(route, "status_code", None) == 201
     }
     assert created == {
@@ -108,7 +109,7 @@ def test_legacy_created_status_codes_are_preserved() -> None:
 
 
 def test_static_study_routes_precede_uuid_route() -> None:
-    paths = [route.path for route in app.routes]
+    paths = [route.path for route in iter_route_contexts(app.routes)]
     assert paths.index("/studies/mine") < paths.index("/studies/{study_id}")
     assert paths.index("/studies/current-script-parameters") < paths.index("/studies/{study_id}")
 
