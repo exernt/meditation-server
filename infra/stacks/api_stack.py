@@ -31,6 +31,11 @@ class ApiStack(Stack):
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
+        log_removal_policy = (
+            RemovalPolicy.RETAIN
+            if config.is_production
+            else RemovalPolicy.DESTROY
+        )
 
         api_role = iam.Role(
             self,
@@ -43,8 +48,8 @@ class ApiStack(Stack):
             "ApiLambdaLogs",
             log_group_name=f"/aws/lambda/{config.prefix}-api",
             retention=(logs.RetentionDays.THREE_MONTHS if config.is_production else logs.RetentionDays.TWO_WEEKS),
+            removal_policy=log_removal_policy,
         )
-        api_logs.apply_removal_policy(RemovalPolicy.RETAIN_ON_UPDATE_OR_DELETE)
         api_logs.grant_write(api_role)
 
         api_role.add_to_policy(
@@ -171,8 +176,8 @@ class ApiStack(Stack):
             "ApiGatewayAccessLogs",
             log_group_name=f"/aws/apigateway/{config.prefix}",
             retention=(logs.RetentionDays.THREE_MONTHS if config.is_production else logs.RetentionDays.TWO_WEEKS),
+            removal_policy=log_removal_policy,
         )
-        access_logs.apply_removal_policy(RemovalPolicy.RETAIN_ON_UPDATE_OR_DELETE)
         self.api = apigateway.RestApi(
             self,
             "RestApi",

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from aws_cdk import BundlingOptions, Duration, Stack
+from aws_cdk import BundlingOptions, Duration, RemovalPolicy, Stack
 from aws_cdk import aws_cloudwatch as cloudwatch
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_lambda as lambda_
@@ -32,6 +32,11 @@ class GenerationStack(Stack):
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
+        log_removal_policy = (
+            RemovalPolicy.RETAIN
+            if config.is_production
+            else RemovalPolicy.DESTROY
+        )
 
         self.dead_letter_queue = sqs.Queue(
             self,
@@ -66,6 +71,7 @@ class GenerationStack(Stack):
             "WorkerLogs",
             log_group_name=f"/aws/lambda/{config.prefix}-generation-worker",
             retention=logs.RetentionDays.TWO_WEEKS,
+            removal_policy=log_removal_policy,
         )
         worker_logs.grant_write(worker_role)
         worker_role.add_to_policy(
@@ -140,6 +146,7 @@ class GenerationStack(Stack):
             "MaintenanceLogs",
             log_group_name=f"/aws/lambda/{config.prefix}-generation-maintenance",
             retention=logs.RetentionDays.TWO_WEEKS,
+            removal_policy=log_removal_policy,
         )
         maintenance_logs.grant_write(maintenance_role)
         maintenance_role.add_to_policy(
