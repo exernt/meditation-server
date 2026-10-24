@@ -412,9 +412,9 @@ References: [using the RDS Data API](https://docs.aws.amazon.com/AmazonRDS/lates
 [supported regions and engines](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Concepts.Aurora_Fea_Regions_DB-eng.Feature.Data_API.html),
 and [Data API limitations](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/data-api.limitations.html).
 
-## 11. Keep TTS optional from the first commit
+## 11. Keep TTS optional
 
-Define a `SpeechSynthesizer` protocol with Polly and disabled adapters:
+The migrated API currently supports Polly and disabled modes:
 
 ```text
 TTS_PROVIDER=polly
@@ -424,7 +424,12 @@ TTS_LANGUAGE_CODE=en-AU
 ```
 
 The provider can be changed to `TTS_PROVIDER=disabled`; script generation and
-text-only playback continue without audio. Unit tests use a fake speech provider.
+text-only playback continue without audio. The public `/tts` boundary is kept
+provider-neutral, but the server selector currently supports only `polly` and
+`disabled`; it is not yet a general provider plug-in registry. See
+[`tts-implementation-and-testing.md`](tts-implementation-and-testing.md) for the
+current flow and the controlled procedure for comparing another voice or
+provider.
 
 Grant only `polly:SynthesizeSpeech`, send narration text only, enforce Polly's
 3,000 billed-character request limit, and cache MP3 chunks in Android
@@ -595,25 +600,51 @@ speculatively now.
 - [ ] AWS account ID, current Free Tier/credit expiry, owner, and handover plan are recorded.
 - [ ] Root MFA, contacts, named IAM users with MFA, and break-glass steps are complete.
 - [ ] Budget, Free Tier, and anomaly alerts reach a maintained mailbox.
-- [ ] Sydney is selected and quotas are documented.
+- [x] Sydney is selected and quotas are documented.
 - [ ] CDK is bootstrapped once with termination protection.
-- [ ] API Gateway account settings in Sydney point to the shared CloudWatch
+- [x] API Gateway account settings in Sydney point to the shared CloudWatch
       logging role; environment API stacks do not own `AWS::ApiGateway::Account`.
-- [ ] The current `WM-CdkBoundary` version permits the required `rds-data` actions.
-- [ ] One development Aurora cluster was created with Express Configuration;
+- [x] The current `WM-CdkBoundary` version permits the required `rds-data` actions.
+- [x] One development Aurora cluster was created with Express Configuration;
       Data API is enabled and its ARN is recorded.
-- [ ] The CDK-created `wm_app` secret and PostgreSQL role have matching credentials.
+- [x] The CDK-created `wm_app` secret and PostgreSQL role have matching credentials.
 - [ ] `main`, GitHub environments, and exact OIDC trust are protected.
 - [ ] No static AWS key or application secret exists in GitHub or the repo.
-- [ ] The package layout, dependency locks, tests, and ignore rules exist.
-- [ ] Shared SQL, local asyncpg, and AWS Data API executors are designed.
+- [x] The package layout, dependency locks, tests, and ignore rules exist.
+- [x] Shared SQL, local asyncpg, and AWS Data API executors are implemented and unit tested.
 - [ ] Refresh-token transaction/race tests pass through both executors.
-- [ ] Migrations are explicit and never run at cold start.
-- [ ] API/worker artifacts contain no Qwen, Torch, FFmpeg, model, or audio stack.
+- [x] Migrations are explicit, checksummed, transaction-locked, and never run at cold start.
+- [x] API/worker artifacts contain no Qwen, Torch, FFmpeg, model, or audio stack.
+- [x] Core FastAPI routes and the hardened native authentication flow are ported
+      and covered by local contract/regression tests.
 - [ ] Both Polly synthesis and `TTS_PROVIDER=disabled` text-only fallback are tested.
 - [ ] Logs redact tokens, emails, answers, feedback, prompts, coordinates, polylines, and scripts.
 - [ ] Consent, retention, overseas disclosure, and research-ethics decisions have owners.
 - [ ] Only synthetic data is used before the production handover deployment.
+
+### Development deployment verification record
+
+Verified on 2026-10-24 against deployed commit `4680040`:
+
+- the `dev` deployment workflow completed with GitHub OIDC credentials;
+- `WmData-dev`, `WmGeneration-dev`, `WmApi-dev`, and `WmOperations-dev` deploy
+  as separate environment stacks;
+- the Aurora writer uses `db.serverless`, exposes the expected Serverless v2
+  scaling configuration, and was created with Express Configuration;
+- the regional API Gateway account points to the shared CloudWatch Logs role;
+- `wm-dev-management` is logging single-region management events, includes
+  global service events, and has log-file validation enabled; and
+- the CloudTrail bucket is private, versioned, retained by CloudFormation,
+  encrypted with SSE-S3 (`AES256`), blocks SSE-C uploads, and expires objects
+  after 365 days.
+
+These checks establish the synthetic infrastructure baseline only. Since that
+deployment, the FastAPI endpoints, native authentication, Data API application
+layer, and optional Polly path have been implemented and locally tested, but
+not redeployed over this baseline. The record therefore does not confirm live
+application/database behavior, Polly/device playback, worker behavior, restore
+and load tests, production WAF operation, privacy approval, production
+deployment, or client handover.
 
 ## 19. Explicitly deferred work
 
@@ -628,9 +659,11 @@ Do not accidentally reintroduce these while following older EC2/Heroku notes:
 - customer-managed KMS keys without an explicit key-management requirement;
 - multi-account or multi-region deployment without a requirement.
 
-The first implementation milestone is a package skeleton, Data API repository
-boundary, optional Polly adapter, CDK synthesis, and local tests. The first AWS
-milestone is a complete synthetic development deployment on the Free Plan
-followed by the defined 100-active-user test—not a production launch. Record
-the plan-expiry date and the named client owner responsible for upgrading the
-account before expiry.
+The first implementation milestone—package boundaries, Data API repository
+layer, migrated FastAPI routes and native authentication, optional Polly path,
+CDK synthesis, and local tests—is substantially complete. The next milestone is
+to redeploy the migrated application to the synthetic development environment,
+exercise the live integrations and failure paths, and run the defined
+100-active-user test. This is not a production launch. Record the plan-expiry
+date and the named client owner responsible for upgrading the account before
+expiry.

@@ -1,4 +1,10 @@
 -r requirements-infra.lock
 
+# Runtime dependencies are also packaged into the API Lambda.
+-r requirements-lambda.txt
+
+# Local migration transport.
+asyncpg>=0.30,<1
+
 # Local Aurora Express initialization without requiring the psql executable.
 psycopg[binary]>=3.2,<4

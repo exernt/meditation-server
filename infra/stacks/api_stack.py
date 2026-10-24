@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from aws_cdk import Duration, RemovalPolicy, Stack
+from aws_cdk import BundlingOptions, Duration, RemovalPolicy, Stack
 from aws_cdk import aws_apigateway as apigateway
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_lambda as lambda_
@@ -118,7 +118,7 @@ class ApiStack(Stack):
                 )
             )
 
-        source_root = Path(__file__).resolve().parents[2] / "src"
+        project_root = Path(__file__).resolve().parents[2]
         concurrency_options = {}
         if config.api_reserved_concurrency is not None:
             concurrency_options["reserved_concurrent_executions"] = (
@@ -131,7 +131,17 @@ class ApiStack(Stack):
             function_name=f"{config.prefix}-api",
             runtime=lambda_.Runtime.PYTHON_3_14,
             handler="meditation_server.api.handler.handler",
-            code=lambda_.Code.from_asset(str(source_root)),
+            code=lambda_.Code.from_asset(
+                str(project_root),
+                bundling=BundlingOptions(
+                    image=lambda_.Runtime.PYTHON_3_14.bundling_image,
+                    command=[
+                        "bash",
+                        "-c",
+                        "pip install --no-cache-dir -r /asset-input/requirements-lambda.txt -t /asset-output && cp -au /asset-input/src/. /asset-output/",
+                    ],
+                ),
+            ),
             role=api_role,
             log_group=api_logs,
             timeout=Duration.seconds(25),
@@ -168,6 +178,7 @@ class ApiStack(Stack):
             "RestApi",
             rest_api_name=f"{config.prefix}-api",
             endpoint_types=[apigateway.EndpointType.REGIONAL],
+            binary_media_types=["audio/mpeg"],
             # API Gateway exposes one CloudWatch logging role per account and Region.
             # It is configured once as an account prerequisite so dev and prod do
             # not compete to own the singleton AWS::ApiGateway::Account resource.

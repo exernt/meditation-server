@@ -1,7 +1,9 @@
 # AWS server refactoring proposal
 
-Status: CDK bootstrap implemented; application migration in progress  
-Last reviewed: 2026-10-23  
+Status: Core FastAPI endpoints and native authentication ported locally; development redeployment and end-to-end verification pending
+
+Last reviewed: 2026-10-24
+
 Target region: `ap-southeast-2` (Sydney)  
 Primary goal: safely support at least 100 concurrently active users with a small operational and cost footprint.
 
@@ -35,12 +37,15 @@ The application Lambdas use the Data API over signed HTTPS. WAF is a mandatory
 production-launch gate, but is omitted from development to avoid unnecessary
 cost.
 
-TTS uses a provider interface with `TTS_PROVIDER=polly|disabled`. The initial
-provider is synchronous Amazon Polly using Australian English `Russell`, the
-standard engine, and MP3 output. Only narration text is disclosed to Polly.
+TTS uses a provider-neutral HTTP boundary with a current
+`TTS_PROVIDER=polly|disabled` implementation. The initial provider is
+synchronous Amazon Polly using Australian English `Russell`, the standard
+engine, and MP3 output. Only narration text is disclosed to Polly.
 Audio is cached in Android app-private storage; no server-side audio bucket is
 provisioned. Disabling TTS leaves script generation and text-only playback
-available and preserves the boundary for later provider evaluation.
+available and preserves the boundary for later provider evaluation. The
+server-side selector is not yet a general provider registry; the swap procedure
+is documented in [`tts-implementation-and-testing.md`](tts-implementation-and-testing.md).
 
 The AWS Free Plan is an allowance/credit mechanism, not a guarantee that this
 stack has a zero bill. The goal is to validate the complete synthetic
@@ -181,7 +186,14 @@ Treat coordinates as transient request data:
 
 ### Script and optional audio generation
 
-Use this asynchronous contract:
+The asynchronous job contract below is the target design, not the current API.
+The migrated application currently exposes the legacy synchronous
+`/route/generate-script/park` and `/route/generate-script/without-park` paths
+with a deterministic fallback generator, plus a separate authenticated
+`POST /tts` endpoint. The OpenAI/elevation/nearby-context worker and job routes
+remain to be implemented.
+
+Target asynchronous contract:
 
 ```text
 POST /v1/generation-jobs      -> 202 { job_id, status_url }
@@ -203,9 +215,11 @@ can be replaced without changing the script contract. Object storage and
 signed URLs remain deferred unless measurements show synchronous delivery is
 inadequate.
 
-Configure the SQS source with batch size 1 and a low maximum concurrency (start
-at 10). Apply per-user in-flight and daily limits. Failed jobs use bounded
-retries with jitter and then move to a DLQ with an alarm.
+Configure the SQS source with batch size 1 and low maximum concurrency. The
+current development account uses 2 because its regional Lambda concurrency
+quota is 10; raise it only after quota and load-test evidence support doing so.
+Apply per-user in-flight and daily limits. Failed jobs use bounded retries with
+jitter and then move to a DLQ with an alarm.
 
 ## Service choices
 
@@ -367,11 +381,13 @@ cross-border disclosure, consent wording, and research-record retention.
 
 ### Phase 1 - application extraction
 
-- Establish the package boundaries above, Lambda handler, redacted logging, and
-  split dependency locks.
-- Implement repository/executor interfaces, shared SQL, Data API transactions,
-  and ordered SQL migrations.
-- Preserve refresh-token race/replay tests.
+- Implemented locally: package boundaries, Mangum Lambda handler, split
+  dependency locks, shared SQL, asyncpg/Data API executors, explicit Data API
+  transactions, and ordered checksummed migrations.
+- Implemented locally: native authentication, study, questionnaire,
+  questionnaire-response, feedback, route, script-contract, and TTS endpoints.
+- Remaining verification: run the migrated application against Aurora and
+  complete refresh-token race/replay coverage through both executors.
 
 ### Phase 2 - minimal AWS foundation and Free Plan verification
 
@@ -384,10 +400,17 @@ cross-border disclosure, consent wording, and research-record retention.
 
 ### Phase 3 - asynchronous generation and optional TTS
 
-- Add job/outbox tables, polling endpoints, idempotency, worker limits, and DLQ
-  recovery.
-- Remove local Qwen/Torch/FFmpeg dependencies and use the optional Polly adapter.
-- Cache MP3 chunks only in Android app-private storage and test text-only fallback.
+- Implemented locally: the optional Polly call path and authenticated MP3
+  endpoint. Qwen, Torch, FFmpeg, model files, and server-side audio storage are
+  excluded from Lambda.
+- Pending app pull-request review: Android app-private MP3 caching and text-only
+  failure behavior. Inventory all `/tts` callers before accepting the client
+  integration because the legacy script screen still sends obsolete
+  Qwen-specific request fields.
+- Remaining: live Polly/device and disabled-mode testing.
+- Remaining: job/outbox tables, polling endpoints, idempotency, worker
+  implementation, DLQ recovery, and the OpenAI/elevation/nearby-context script
+  generator. The current script routes use the deterministic fallback contract.
 
 ### Phase 4 - privacy and readiness
 

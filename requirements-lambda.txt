@@ -1,0 +1,8 @@
+boto3>=1.42,<2
+fastapi>=0.129,<1
+mangum>=0.19,<1
+pydantic>=2.12,<3
+email-validator>=2.3,<3
+argon2-cffi>=25.1,<26
+PyJWT>=2.10,<3
+httpx>=0.28,<1
