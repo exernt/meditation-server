@@ -8,3 +8,7 @@ asyncpg>=0.30,<1
 
 # Local Aurora Express initialization without requiring the psql executable.
 psycopg[binary]>=3.2,<4
+
+# RDS Data API migrations require botocore's AWS CRT support. Keep this aligned
+# with the boto3 pin in requirements-lambda.txt.
+botocore[crt]==1.43.118

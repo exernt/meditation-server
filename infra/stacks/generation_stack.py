@@ -199,7 +199,7 @@ class GenerationStack(Stack):
             ],
             apply_to_children=False,
         )
-        self.maintenance.grant_invoke(scheduler_role)
+        self.maintenance.grant_invoke_latest_version(scheduler_role)
         scheduler_dlq.grant_send_messages(scheduler_role)
         scheduler_target_options = {
             "dead_letter_config": scheduler.CfnSchedule.DeadLetterConfigProperty(
