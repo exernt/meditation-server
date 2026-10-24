@@ -8,6 +8,13 @@ import pytest
 from meditation_server.integrations import speech
 
 
+@pytest.fixture(autouse=True)
+def clear_cached_polly_clients():
+    speech._polly_client.cache_clear()
+    yield
+    speech._polly_client.cache_clear()
+
+
 class RecordingPollyClient:
     def __init__(self, audio: bytes = b"ID3-test-audio") -> None:
         self.audio = audio
@@ -55,8 +62,8 @@ def test_polly_request_uses_configured_mp3_voice(monkeypatch) -> None:
         "Engine": "standard",
         "LanguageCode": "en-AU",
         "OutputFormat": "mp3",
-        "Text": "A quiet walk.",
-        "TextType": "text",
+        "Text": "<speak>A quiet walk.</speak>",
+        "TextType": "ssml",
         "VoiceId": "Russell",
     }
     assert client.stream is not None and client.stream.closed
@@ -69,3 +76,51 @@ def test_empty_polly_response_is_rejected(monkeypatch) -> None:
 
     with pytest.raises(RuntimeError, match="no audio"):
         asyncio.run(speech.synthesize("A quiet walk."))
+
+
+def test_pause_markers_become_fixed_ssml_breaks_and_text_is_escaped(monkeypatch) -> None:
+    client = RecordingPollyClient()
+    monkeypatch.setenv("TTS_PROVIDER", "polly")
+    monkeypatch.setattr(speech.boto3, "client", lambda *args, **kwargs: client)
+
+    asyncio.run(speech.synthesize("(pause)A & B <tag>(PAUSE)(pause)End.(pause)"))
+
+    assert client.request is not None
+    assert client.request["TextType"] == "ssml"
+    assert client.request["Text"] == (
+        '<speak><break time="2500ms"/>A &amp; B &lt;tag&gt;'
+        '<break time="2500ms"/><break time="2500ms"/>End.'
+        '<break time="2500ms"/></speak>'
+    )
+
+
+def test_pause_only_and_oversized_escaped_ssml_are_rejected_before_polly(monkeypatch) -> None:
+    monkeypatch.setenv("TTS_PROVIDER", "polly")
+    monkeypatch.setattr(
+        speech.boto3,
+        "client",
+        lambda *args, **kwargs: pytest.fail("Invalid narration must not contact Polly"),
+    )
+
+    with pytest.raises(speech.InvalidSpeechText, match="spoken text"):
+        asyncio.run(speech.synthesize("(pause)(PAUSE)"))
+    with pytest.raises(speech.InvalidSpeechText, match="SSML limit"):
+        asyncio.run(speech.synthesize("&" * 2000))
+
+
+def test_reuses_polly_client_within_a_warm_lambda_environment(monkeypatch) -> None:
+    client = RecordingPollyClient()
+    creations = 0
+
+    def create_client(*args, **kwargs):
+        nonlocal creations
+        creations += 1
+        return client
+
+    monkeypatch.setenv("TTS_PROVIDER", "polly")
+    monkeypatch.setattr(speech.boto3, "client", create_client)
+
+    asyncio.run(speech.synthesize("First."))
+    asyncio.run(speech.synthesize("Second."))
+
+    assert creations == 1

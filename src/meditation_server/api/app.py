@@ -13,7 +13,7 @@ from meditation_server.api.dependencies import CurrentUserDependency, DatabaseDe
 from meditation_server.api.models import ScriptWithParkRequest, ScriptWithoutParkRequest, TtsRequest, WalkRouteRequest
 from meditation_server.integrations.maps import generate_walk_route
 from meditation_server.integrations.scripts import with_park, without_park
-from meditation_server.integrations.speech import SpeechDisabled, synthesize
+from meditation_server.integrations.speech import InvalidSpeechText, SpeechDisabled, synthesize
 from meditation_server.repositories.asyncpg import AsyncpgExecutor
 
 
@@ -129,6 +129,8 @@ async def generate_baseline_script(payload: ScriptWithoutParkRequest, _user: Cur
 async def text_to_speech(payload: TtsRequest, _user: CurrentUserDependency):
     try:
         audio = await synthesize(payload.text)
+    except InvalidSpeechText as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except SpeechDisabled as exc:
         raise HTTPException(status_code=503, detail="Text-to-speech is disabled") from exc
     except Exception as exc:

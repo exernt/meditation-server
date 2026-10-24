@@ -24,7 +24,8 @@ transport failure returns `502`.
 
 The Lambda calls Polly synchronously from an async worker thread. It uses a
 3-second connection timeout, a 15-second read timeout, and at most three
-standard retry attempts. The initial synthesis settings are:
+standard retry attempts. Its Polly client is cached for reuse by warm Lambda
+execution environments. The initial synthesis settings are:
 
 | Setting | Current value |
 | --- | --- |
@@ -33,7 +34,8 @@ standard retry attempts. The initial synthesis settings are:
 | Voice | `Russell` |
 | Language | `en-AU` |
 | Engine | `standard` |
-| Input | Plain text |
+| Public input | Provider-neutral text with optional `(pause)` markers |
+| Polly input | Escaped SSML; each marker becomes a 2.5-second break |
 | Output | MP3 |
 
 The API role receives `polly:SynthesizeSpeech` only when CDK context
@@ -41,14 +43,20 @@ The API role receives `polly:SynthesizeSpeech` only when CDK context
 Region. Polly does not support resource-level permissions for this action, so
 the IAM resource is `*`. No generated audio is stored on the server or in S3.
 
-The current local Android `TtsAudioClient` splits narration into chunks of no
-more than 3,000 characters. Requests use the authenticated HTTP client,
-including one token refresh after a `401`. Successful chunks are written
-atomically to the app-private cache and played with `MediaPlayer`. A failure
-stops further TTS requests for that walk and leaves navigation available in
-text-only mode. Signing out and local session cleanup remove the cached
-narration. This client work is pending review against the teammate's incoming
-app pull request and is not yet the accepted mobile implementation.
+The Android `TtsClient` splits narration into chunks of no more than 2,800
+Unicode code points. Requests use the authenticated HTTP client, including one
+token refresh after a `401`. Successful chunks are written atomically to the
+app-private cache and their paths are stored as an ordered list under the
+original route-anchored narration. `MediaPlayer` advances through every part
+before the scheduler advances to the next narration. A failed preparation is
+not published as a ready walk and can be retried without downloading completed
+chunks again.
+
+The client preserves `(pause)` tokens exactly. The server detects them
+case-insensitively, XML-escapes every ordinary text segment, inserts only its
+own `<break time="2500ms"/>` elements, and wraps the result in `<speak>`. A
+pause-only request or text that expands beyond Polly's 6,000-character SSML
+limit returns `422` before Polly is contacted.
 
 ## What is and is not configurable today
 
@@ -78,14 +86,14 @@ runtime plug-in registry.
 4. Run the server tests and synthesize the API stack.
 5. Review the CloudFormation diff, then deploy `WmApi-dev` through the protected
    development workflow using synthetic narration only.
-6. Clear the Android TTS cache before listening. Cache keys currently depend on
-   narration text, not provider or voice, so an old MP3 can otherwise mask the
-   change. Signing out clears sensitive cached files; clearing the app cache is
-   also sufficient.
+6. Clear the current Android walk before listening (or deliberately bump the
+   mobile TTS contract ID). Cache keys cover endpoint, contract, chunking, and
+   text, but a server-only voice change at the same URL cannot change a local
+   key. Signing out or clearing app storage is also sufficient.
 7. Compare the same short and long scripts for pronunciation, pacing, latency,
    failure behavior, and cost. Confirm a request over 3,000 characters is
-   rejected and that disabling TTS produces text-only playback without a
-   request loop.
+   rejected and that disabling TTS fails preparation cleanly without a request
+   loop.
 
 ## Test a different TTS provider
 
@@ -116,7 +124,7 @@ text and return non-empty MP3 bytes.
    narration text or provider credentials.
 8. Clear the Android TTS cache, then run the same listening comparison used for
    Polly. Roll back by redeploying the prior provider, or set
-   `ttsProvider=disabled` to preserve text-only playback while investigating.
+   `ttsProvider=disabled` to stop synthesis while investigating.
 
 Before sending narration to a new vendor, document its processing Region,
 retention/training policy, data-processing terms, quotas, and pricing, and have
@@ -131,8 +139,7 @@ load test, and production deployment are still release-gate work. The deployed
 synthetic infrastructure baseline predates the migrated FastAPI application, so
 it must not be treated as end-to-end application verification.
 
-Review the teammate's Android pull request before making further client changes.
-As part of that review, inventory every `/tts` caller and ensure it sends only
-the supported `{"text": "..."}` body. The current legacy `ScriptActivity` also
-sends Qwen-specific `language`, `speaker`, `instruct`, and `bitrate` fields;
-the migrated request model forbids those extra fields and would return `422`.
+The accepted Android implementation sends only the supported
+`{"text": "..."}` body. Provider-specific Qwen and Polly payload builders have
+been removed from the mobile client; the request model continues to forbid
+extra fields with `422`.
