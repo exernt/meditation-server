@@ -19,9 +19,12 @@ General requirements:
 - End each section gently.
 
 Closing meditation:
+- This section follows directly from focused attention and compassion within the same meditation, which is already in progress.
+- Continue naturally from the preceding narration. Do not welcome the listener, reintroduce the meditation, or speak as though a new session is beginning.
 - Address this purpose: {context}.
 - Write exactly one segment narration for each supplied park-to-destination segment ID.
-- Count opening_narration as part of the first segment's range and closing_narration as part of the last segment's range.
+- Each segment supplies an approximate spoken-word target. Use it as pacing guidance, not a strict limit.
+- Count opening_narration toward the first segment's approximate target and closing_narration toward the last segment's approximate target.
 
 Park-to-destination segments (target total {Closing_word_count} words):
 {park_to_destination}

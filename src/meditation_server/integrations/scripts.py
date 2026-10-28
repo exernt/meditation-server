@@ -50,7 +50,7 @@ def _script(
         "duration_minutes": duration_minutes,
         "language": "en-AU",
         "includes_pauses": True,
-        "prompt_version": "narration-2026-10-v4",
+        "prompt_version": "narration-2026-10-v5",
         "model": "fallback",
         "fallback": True,
         "inputs": {

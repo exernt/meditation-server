@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import math
 import re
 from collections.abc import Callable
 from typing import Any, Sequence
@@ -28,8 +27,7 @@ from meditation_server.integrations.openai_generation import (
 logger = logging.getLogger(__name__)
 
 TARGET_WORDS_PER_MINUTE = 150
-WORD_COUNT_TOLERANCE = 0.2
-PROMPT_VERSION = "narration-2026-10-v4"
+PROMPT_VERSION = "narration-2026-10-v5"
 FOCUSED_ATTENTION_SHARE = 0.2
 COMPASSION_SHARE = 0.4
 CLOSING_SHARE = 0.4
@@ -38,13 +36,6 @@ NON_EMPTY_TEXT_PATTERN = r"\S"
 
 def _words_for_seconds(seconds: float) -> int:
     return int(round((seconds / 60) * TARGET_WORDS_PER_MINUTE))
-
-
-def _word_range(target_words: int) -> tuple[int, int]:
-    return (
-        max(0, math.floor(target_words * (1 - WORD_COUNT_TOLERANCE))),
-        max(0, math.ceil(target_words * (1 + WORD_COUNT_TOLERANCE))),
-    )
 
 
 def _route_label(instruction: str) -> str:
@@ -69,7 +60,6 @@ def _route_context(
     values: list[dict[str, Any]] = []
     for segment in segments:
         target = _words_for_seconds(segment.duration_s)
-        minimum, maximum = _word_range(target)
         segment_id = _segment_id(route_phase, segment)
         value: dict[str, Any] = {
             "segment_id": segment_id,
@@ -78,8 +68,6 @@ def _route_context(
             "terrain": segment.elevation_classification,
             "estimated_duration_seconds": segment.duration_s,
             "target_words": target,
-            "minimum_words": minimum,
-            "maximum_words": maximum,
         }
         if nearby.get(segment_id):
             value["nearby_features"] = nearby[segment_id]
@@ -178,63 +166,6 @@ def _parse_narrations(
     return value
 
 
-def _word_count(text: str) -> int:
-    without_pauses = re.sub(r"\(\s*pause\s*\)", " ", text, flags=re.IGNORECASE)
-    return len(without_pauses.split())
-
-
-def _word_count_violations(
-    narrations: dict[str, Any],
-    focused_segments: Sequence[EnrichedSegment],
-    focused_phase: str,
-    compassion_words: int,
-    closing_segments: Sequence[EnrichedSegment],
-    closing_phase: str,
-    standalone_closing_words: int,
-) -> list[str]:
-    problems: list[str] = []
-
-    def check(name: str, words: int, target: int) -> None:
-        minimum, maximum = _word_range(target)
-        if words < minimum or words > maximum:
-            problems.append(f"{name}: {words} spoken words, expected {minimum}-{maximum}")
-
-    def check_walking(
-        section_name: str,
-        segments: Sequence[EnrichedSegment],
-        route_phase: str,
-    ) -> None:
-        if not segments:
-            return
-        section = narrations[section_name]
-        last_index = len(segments) - 1
-        for index, segment in enumerate(segments):
-            segment_id = _segment_id(route_phase, segment)
-            words = _word_count(section["segment_narrations"][segment_id])
-            if index == 0:
-                words += _word_count(section["opening_narration"])
-            if index == last_index:
-                words += _word_count(section["closing_narration"])
-            check(f"{section_name}.{segment_id}", words, _words_for_seconds(segment.duration_s))
-
-    check_walking("focused_attention", focused_segments, focused_phase)
-    check_walking("closing_meditation", closing_segments, closing_phase)
-    check(
-        "compassion_meditation",
-        _word_count(narrations["compassion_meditation"]["narration"]),
-        compassion_words,
-    )
-    if not closing_segments:
-        closing = narrations["closing_meditation"]
-        check(
-            "closing_meditation",
-            _word_count(closing["opening_narration"])
-            + _word_count(closing["closing_narration"]),
-            standalone_closing_words,
-        )
-    return problems
-
-
 def _fallback_segment_text(segment: EnrichedSegment) -> str:
     label = segment.elevation_classification.casefold()
     if "uphill" in label:
@@ -314,10 +245,8 @@ async def _generate_narrations(
     prompts: dict[str, str],
     focused_segments: Sequence[EnrichedSegment],
     focused_phase: str,
-    compassion_words: int,
     closing_segments: Sequence[EnrichedSegment],
     closing_phase: str,
-    standalone_closing_words: int,
     *,
     has_park: bool,
     raw_output_observer: Callable[[GeneratedText], None] | None = None,
@@ -399,31 +328,6 @@ async def _generate_narrations(
         narrations = _parse_narrations(
             combined_generation.text, focused_ids, closing_ids
         )
-        problems = _word_count_violations(
-            narrations,
-            focused_segments,
-            focused_phase,
-            compassion_words,
-            closing_segments,
-            closing_phase,
-            standalone_closing_words,
-        )
-        if problems:
-            for problem in problems:
-                logger.warning("Generated narration outside word target: %s", problem)
-            if not settings.script_fallback_enabled():
-                raise OpenAiGenerationError("Generated narration violated word targets")
-            return (
-                _fallback_narrations(
-                    focused_segments,
-                    focused_phase,
-                    closing_segments,
-                    closing_phase,
-                    has_park=has_park,
-                ),
-                usage,
-                True,
-            )
         return narrations, usage, False
     except ValueError:
         if not settings.script_fallback_enabled():
@@ -573,8 +477,6 @@ async def generate_without_park(
     )
     compassion_words = _words_for_seconds(payload.total_walking_time * COMPASSION_SHARE)
     closing_words = _words_for_seconds(payload.total_walking_time * CLOSING_SHARE)
-    compassion_min, compassion_max = _word_range(compassion_words)
-    closing_min, closing_max = _word_range(closing_words)
     shared_prompt_values = {
         "duration_minutes": max(1, round(payload.total_walking_time / 60)),
         "weatherCondition": weather,
@@ -592,26 +494,20 @@ async def generate_without_park(
             "without_park_compassion_meditation.txt",
             **shared_prompt_values,
             CM_word_count=compassion_words,
-            CM_min_words=compassion_min,
-            CM_max_words=compassion_max,
         ),
         "closing_meditation": _render_prompt(
             "without_park_closing_meditation.txt",
             **shared_prompt_values,
             context=payload.context,
             Closing_word_count=closing_words,
-            Closing_min_words=closing_min,
-            Closing_max_words=closing_max,
         ),
     }
     narrations, usage, fallback = await _generate_narrations(
         prompts,
         focused_segments,
         focused_phase,
-        compassion_words,
         [],
         closing_phase,
-        closing_words,
         has_park=False,
         raw_output_observer=raw_output_observer,
     )
@@ -656,7 +552,6 @@ async def generate_with_park(
     focused_words = _words_for_seconds(payload.to_park_time)
     compassion_words = _words_for_seconds(payload.park_time)
     closing_words = _words_for_seconds(payload.park_to_destination_time)
-    compassion_min, compassion_max = _word_range(compassion_words)
     duration_seconds = (
         payload.to_park_time + payload.park_time + payload.park_to_destination_time
     )
@@ -677,8 +572,6 @@ async def generate_with_park(
             "with_park_compassion_meditation.txt",
             **shared_prompt_values,
             CM_word_count=compassion_words,
-            CM_min_words=compassion_min,
-            CM_max_words=compassion_max,
         ),
         "closing_meditation": _render_prompt(
             "with_park_closing_meditation.txt",
@@ -694,10 +587,8 @@ async def generate_with_park(
         prompts,
         focused_segments,
         focused_phase,
-        compassion_words,
         closing_segments,
         closing_phase,
-        closing_words,
         has_park=True,
         raw_output_observer=raw_output_observer,
     )

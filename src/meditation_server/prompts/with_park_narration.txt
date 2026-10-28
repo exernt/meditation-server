@@ -21,20 +21,23 @@ General requirements:
 Focused attention:
 - Focus on walking, breath, muscles, bodily sensation, and present-moment attention.
 - Write exactly one segment narration for each supplied source-to-park segment ID.
-- Each segment supplies a target, minimum, and maximum spoken-word count.
-- Count focused_attention.opening_narration as part of the first segment's range and focused_attention.closing_narration as part of the last segment's range.
+- Each segment supplies an approximate spoken-word target. Use it as pacing guidance, not a strict limit.
+- Count focused_attention.opening_narration toward the first segment's approximate target and focused_attention.closing_narration toward the last segment's approximate target.
 
 Source-to-park segments (target total {FAM_word_count} words):
 {source_to_park}
 
 Compassion meditation:
-- Write between {CM_min_words} and {CM_max_words} spoken words (target {CM_word_count}).
+- Aim for approximately {CM_word_count} spoken words, using the target as pacing guidance rather than a strict limit.
 - Set it in the park and focus on kindness toward self and others.
 
 Closing meditation:
+- This section follows directly from focused attention and compassion within the same meditation, which is already in progress.
+- Continue naturally from the preceding narration. Do not welcome the listener, reintroduce the meditation, or speak as though a new session is beginning.
 - Address this purpose: {context}.
 - Write exactly one segment narration for each supplied park-to-destination segment ID.
-- Count closing_meditation.opening_narration as part of the first segment's range and closing_meditation.closing_narration as part of the last segment's range.
+- Each segment supplies an approximate spoken-word target. Use it as pacing guidance, not a strict limit.
+- Count closing_meditation.opening_narration toward the first segment's approximate target and closing_meditation.closing_narration toward the last segment's approximate target.
 
 Park-to-destination segments (target total {Closing_word_count} words):
 {park_to_destination}

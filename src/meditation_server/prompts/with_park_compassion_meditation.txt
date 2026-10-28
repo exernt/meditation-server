@@ -19,5 +19,5 @@ General requirements:
 - End each section gently.
 
 Compassion meditation:
-- Write between {CM_min_words} and {CM_max_words} spoken words (target {CM_word_count}).
+- Aim for approximately {CM_word_count} spoken words, using the target as pacing guidance rather than a strict limit.
 - Set it in the park and focus on kindness toward self and others.

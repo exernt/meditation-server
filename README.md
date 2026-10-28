@@ -38,7 +38,8 @@ The database foundation now includes ordered, checksummed PostgreSQL migrations
 and a shared async executor boundary. Local integration code uses `asyncpg`;
 AWS code uses the RDS Data API with the same named SQL and explicit transaction
 handles. Migrations remain an operator action and are never run during Lambda
-cold start.
+cold start. See [`docs/database-schema.md`](docs/database-schema.md) for the
+Mermaid entity-relationship diagram.
 
 The native authentication flow is intentionally retained rather than replaced
 with Cognito. It uses Argon2id password hashes, verified email, short-lived JWTs

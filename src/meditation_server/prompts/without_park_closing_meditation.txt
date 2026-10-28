@@ -19,6 +19,8 @@ General requirements:
 - End each section gently.
 
 Closing meditation:
-- The combined opening and closing narration must contain between {Closing_min_words} and {Closing_max_words} spoken words (target {Closing_word_count}).
+- This section follows directly from focused attention and compassion within the same meditation, which is already in progress.
+- Continue naturally from the preceding narration. Do not welcome the listener, reintroduce the meditation, or speak as though a new session is beginning.
+- Aim for approximately {Closing_word_count} spoken words across opening_narration and closing_narration, using the target as pacing guidance rather than a strict limit.
 - Address this purpose: {context}.
 - The closing section has no route-segment narrations; return the required empty segment object specified by the schema.

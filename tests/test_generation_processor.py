@@ -92,7 +92,7 @@ def _generated_sections() -> list[GeneratedText]:
             usage=_usage(),
         ),
         GeneratedText(
-            text=json.dumps({"narration": _words(300)}),
+            text=json.dumps({"narration": _words(220)}),
             usage=_usage(),
         ),
         GeneratedText(
@@ -141,6 +141,8 @@ def test_worker_processor_enriches_and_minimises_openai_prompt(monkeypatch) -> N
     assert all("-37.81" not in prompt for prompt in prompts)
     assert all("144.96" not in prompt for prompt in prompts)
     assert all("encoded" not in prompt for prompt in prompts)
+    assert all("minimum_words" not in prompt for prompt in prompts)
+    assert all("maximum_words" not in prompt for prompt in prompts)
     assert [
         call.kwargs["schema_name"] for call in generate.await_args_list
     ] == [
@@ -155,7 +157,7 @@ def test_worker_processor_enriches_and_minimises_openai_prompt(monkeypatch) -> N
         "compassion_meditation",
         "closing_meditation",
     }
-    assert raw_document["compassion_meditation"]["narration"] == _words(300)
+    assert raw_document["compassion_meditation"]["narration"] == _words(220)
     assert raw_outputs[0].usage.total_tokens == 450
     assert result["generation_cost_usd"] == 0.000102
     assert result["usage"]["total_tokens"] == 450
@@ -195,11 +197,7 @@ def test_section_prompt_templates_render_only_their_requested_section() -> None:
         "FAM_word_count": 300,
         "source_to_park": "[]",
         "CM_word_count": 300,
-        "CM_min_words": 240,
-        "CM_max_words": 360,
         "Closing_word_count": 300,
-        "Closing_min_words": 240,
-        "Closing_max_words": 360,
         "context": "settling after study",
         "park_to_destination": "[]",
     }
@@ -220,11 +218,16 @@ def test_section_prompt_templates_render_only_their_requested_section() -> None:
             preambles.append(prompt.split(expected_heading, maxsplit=1)[0])
             assert "Use short sentences." in prompt
             assert "Clear, 20°C" in prompt
+            assert "between " not in prompt
+            assert "word range" not in prompt.casefold()
             assert all(
                 heading not in prompt
                 for name, heading in prompt_sections.items()
                 if name != section_name
             )
+            if section_name == "closing_meditation":
+                assert "already in progress" in prompt
+                assert "Do not welcome the listener" in prompt
         assert len(set(preambles)) == 1
 
 

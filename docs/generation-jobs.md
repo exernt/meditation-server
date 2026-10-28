@@ -6,9 +6,10 @@ enriches client-supplied route steps with Google weather, elevation and nearby
 context, then makes three independent `gpt-6-luna` calls for focused attention,
 compassion, and closing narration. Each response is constrained by a strict JSON
 Schema. The worker combines the three sections, pools their token usage and
-cost, and validates the complete script's spoken-word budgets. A deterministic,
-walking-safe fallback is returned if a provider is unavailable or generated
-narration is invalid; the result's `fallback` field makes that behaviour explicit.
+cost, and validates the complete script's structure. Word targets guide pacing
+but are not enforced as acceptance ranges. A deterministic, walking-safe
+fallback is returned if a provider is unavailable or generated narration is
+structurally invalid; the result's `fallback` field makes that behaviour explicit.
 
 Enrichment is bounded by route legs rather than navigation-step count. Each
 leg batches its step boundaries into one Elevation request and performs one
@@ -17,7 +18,7 @@ two legs, so generation makes two Elevation calls, two Nearby Search calls,
 and one Weather call regardless of its usual number of navigation steps.
 
 Only route labels/instructions, terrain classifications, nearby feature names,
-weather, word budgets, the user's stated meditation context and approved study
+weather, approximate word targets, the user's stated meditation context and approved study
 parameters are sent to OpenAI. Exact coordinates, polylines, user IDs, account
 data and authentication material are excluded from the prompt.
 
