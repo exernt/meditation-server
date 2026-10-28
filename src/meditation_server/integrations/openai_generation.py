@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -55,6 +56,27 @@ def zero_usage() -> GenerationUsage:
         reasoning_tokens=0,
         total_tokens=0,
         cost_usd=0.0,
+    )
+
+
+def combine_generation_usage(usages: Sequence[GenerationUsage]) -> GenerationUsage:
+    if not usages:
+        return zero_usage()
+
+    model = usages[0].model
+    if any(usage.model != model for usage in usages):
+        raise ValueError("Cannot combine generation usage from different models")
+    service_tiers = {usage.service_tier for usage in usages}
+    return GenerationUsage(
+        model=model,
+        service_tier=usages[0].service_tier if len(service_tiers) == 1 else "mixed",
+        input_tokens=sum(usage.input_tokens for usage in usages),
+        cached_input_tokens=sum(usage.cached_input_tokens for usage in usages),
+        cache_write_tokens=sum(usage.cache_write_tokens for usage in usages),
+        output_tokens=sum(usage.output_tokens for usage in usages),
+        reasoning_tokens=sum(usage.reasoning_tokens for usage in usages),
+        total_tokens=sum(usage.total_tokens for usage in usages),
+        cost_usd=round(sum(usage.cost_usd for usage in usages), 10),
     )
 
 

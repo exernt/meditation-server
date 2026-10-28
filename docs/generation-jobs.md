@@ -3,10 +3,12 @@
 The asynchronous generation boundary is implemented with Aurora PostgreSQL,
 an SQS queue, an on-demand Lambda worker, and a transactional outbox. The worker
 enriches client-supplied route steps with Google weather, elevation and nearby
-context, then asks `gpt-6-luna` for narration constrained by a strict JSON
-Schema and validates its spoken-word budgets. A deterministic, walking-safe
-fallback is returned if a provider is unavailable or generated narration is
-invalid; the result's `fallback` field makes that behaviour explicit.
+context, then makes three independent `gpt-6-luna` calls for focused attention,
+compassion, and closing narration. Each response is constrained by a strict JSON
+Schema. The worker combines the three sections, pools their token usage and
+cost, and validates the complete script's spoken-word budgets. A deterministic,
+walking-safe fallback is returned if a provider is unavailable or generated
+narration is invalid; the result's `fallback` field makes that behaviour explicit.
 
 Enrichment is bounded by route legs rather than navigation-step count. Each
 leg batches its step boundaries into one Elevation request and performs one
@@ -18,6 +20,26 @@ Only route labels/instructions, terrain classifications, nearby feature names,
 weather, word budgets, the user's stated meditation context and approved study
 parameters are sent to OpenAI. Exact coordinates, polylines, user IDs, account
 data and authentication material are excluded from the prompt.
+
+## Development script archive and outcome logs
+
+The CDK `dev` generation stack creates a private S3 bucket for operator-facing
+copies of completed generation results. The worker stores one JSON object under
+`generation-results/YYYY/MM/DD/<job-id>.json` after the Aurora result commits.
+The three Luna section responses are reconstructed into the legacy top-level
+JSON document and stored alongside it as `<job-id>.attempt-<n>.raw.json`; the
+attempt suffix preserves separate outputs when a job is retried. Reconstructed
+raw output is also archived when post-generation validation fails and fallback
+is disabled, provided all three Luna calls returned a response.
+The bucket blocks public access, requires TLS, uses server-side encryption, and
+expires objects after seven days. It is deliberately absent from production.
+
+The worker also emits a `generation_outcome` record containing the job ID,
+generation kind, attempt count, fallback status, model, token usage, estimated
+cost, final archive key, and raw archive keys. Narration and route data are not
+duplicated into CloudWatch Logs. The development worker log group also has
+seven-day retention. An S3 archive failure is logged but does not make an
+already-completed job fail; Aurora remains the delivery system of record.
 
 ## API contract
 

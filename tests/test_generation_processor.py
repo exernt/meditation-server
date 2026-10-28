@@ -16,6 +16,7 @@ from meditation_server.integrations.openai_generation import (
     OpenAiGenerationError,
     _calculate_luna_standard_cost_usd,
     _generate_text_sync,
+    combine_generation_usage,
 )
 
 
@@ -61,22 +62,7 @@ def _segment() -> EnrichedSegment:
     )
 
 
-def _generated_text() -> GeneratedText:
-    text = json.dumps(
-        {
-            "focused_attention": {
-                "opening_narration": _words(50),
-                "segment_narrations": {"source_to_destination_1": _words(50)},
-                "closing_narration": _words(50),
-            },
-            "compassion_meditation": {"narration": _words(300)},
-            "closing_meditation": {
-                "opening_narration": _words(150),
-                "segment_narrations": {},
-                "closing_narration": _words(150),
-            },
-        }
-    )
+def _usage() -> GenerationUsage:
     usage = GenerationUsage(
         model="gpt-6-luna",
         service_tier="default",
@@ -88,7 +74,38 @@ def _generated_text() -> GeneratedText:
         total_tokens=150,
         cost_usd=0.000034,
     )
-    return GeneratedText(text=text, usage=usage)
+    return usage
+
+
+def _generated_sections() -> list[GeneratedText]:
+    return [
+        GeneratedText(
+            text=json.dumps(
+                {
+                    "opening_narration": _words(50),
+                    "segment_narrations": {
+                        "source_to_destination_1": _words(50)
+                    },
+                    "closing_narration": _words(50),
+                }
+            ),
+            usage=_usage(),
+        ),
+        GeneratedText(
+            text=json.dumps({"narration": _words(300)}),
+            usage=_usage(),
+        ),
+        GeneratedText(
+            text=json.dumps(
+                {
+                    "opening_narration": _words(150),
+                    "segment_narrations": {},
+                    "closing_narration": _words(150),
+                }
+            ),
+            usage=_usage(),
+        ),
+    ]
 
 
 def test_worker_processor_enriches_and_minimises_openai_prompt(monkeypatch) -> None:
@@ -103,8 +120,8 @@ def test_worker_processor_enriches_and_minimises_openai_prompt(monkeypatch) -> N
         "lookup_nearby_features",
         AsyncMock(return_value={"source_to_destination_1": ["Royal Park"]}),
     )
-    generated = _generated_text()
-    generate = AsyncMock(return_value=generated)
+    generated_sections = _generated_sections()
+    generate = AsyncMock(side_effect=generated_sections)
     monkeypatch.setattr(generation_processor, "generate_text", generate)
     raw_outputs = []
 
@@ -114,17 +131,34 @@ def test_worker_processor_enriches_and_minimises_openai_prompt(monkeypatch) -> N
         )
     )
 
-    prompt = generate.await_args.args[0]
-    assert "Royal Park" in prompt
-    assert "Swanston Street" in prompt
-    assert "Use short sentences." in prompt
-    assert "-37.81" not in prompt
-    assert "144.96" not in prompt
-    assert "encoded" not in prompt
-    assert generate.await_args.kwargs["schema_name"] == "meditation_narrations"
-    assert raw_outputs == [generated]
-    assert result["generation_cost_usd"] == 0.000034
-    assert result["usage"]["total_tokens"] == 150
+    prompts = [call.args[0] for call in generate.await_args_list]
+    assert generate.await_count == 3
+    assert "Royal Park" in prompts[0]
+    assert "Swanston Street" in prompts[0]
+    assert "Royal Park" not in prompts[1]
+    assert "Swanston Street" not in prompts[1]
+    assert all("Use short sentences." in prompt for prompt in prompts)
+    assert all("-37.81" not in prompt for prompt in prompts)
+    assert all("144.96" not in prompt for prompt in prompts)
+    assert all("encoded" not in prompt for prompt in prompts)
+    assert [
+        call.kwargs["schema_name"] for call in generate.await_args_list
+    ] == [
+        "focused_attention_narration",
+        "compassion_meditation_narration",
+        "closing_meditation_narration",
+    ]
+    assert len(raw_outputs) == 1
+    raw_document = json.loads(raw_outputs[0].text)
+    assert set(raw_document) == {
+        "focused_attention",
+        "compassion_meditation",
+        "closing_meditation",
+    }
+    assert raw_document["compassion_meditation"]["narration"] == _words(300)
+    assert raw_outputs[0].usage.total_tokens == 450
+    assert result["generation_cost_usd"] == 0.000102
+    assert result["usage"]["total_tokens"] == 450
     assert result["script"]["fallback"] is False
     segment = result["script"]["sections"][0]["route_segments"][0]
     assert segment["id"] == "source_to_destination_1"
@@ -133,13 +167,13 @@ def test_worker_processor_enriches_and_minimises_openai_prompt(monkeypatch) -> N
 
 
 def test_narration_schema_requires_non_whitespace_text() -> None:
-    schema = generation_processor._narration_schema(
-        ["source_to_destination_1"], ["park_to_destination_1"]
-    )
-
-    focused = schema["properties"]["focused_attention"]["properties"]
-    closing = schema["properties"]["closing_meditation"]["properties"]
-    compassion = schema["properties"]["compassion_meditation"]["properties"]
+    focused = generation_processor._walking_section_schema(
+        ["source_to_destination_1"]
+    )["properties"]
+    closing = generation_processor._walking_section_schema(
+        ["park_to_destination_1"]
+    )["properties"]
+    compassion = generation_processor._compassion_section_schema()["properties"]
     text_schemas = [
         focused["opening_narration"],
         focused["segment_narrations"]["properties"]["source_to_destination_1"],
@@ -151,6 +185,47 @@ def test_narration_schema_requires_non_whitespace_text() -> None:
     ]
 
     assert all(value["pattern"] == r"\S" for value in text_schemas)
+
+
+def test_section_prompt_templates_render_only_their_requested_section() -> None:
+    values = {
+        "duration_minutes": 10,
+        "weatherCondition": "Clear, 20°C",
+        "study_parameters": "Use short sentences.",
+        "FAM_word_count": 300,
+        "source_to_park": "[]",
+        "CM_word_count": 300,
+        "CM_min_words": 240,
+        "CM_max_words": 360,
+        "Closing_word_count": 300,
+        "Closing_min_words": 240,
+        "Closing_max_words": 360,
+        "context": "settling after study",
+        "park_to_destination": "[]",
+    }
+    prompt_sections = {
+        "focused_attention": "\nFocused attention:\n",
+        "compassion_meditation": "\nCompassion meditation:\n",
+        "closing_meditation": "\nClosing meditation:\n",
+    }
+
+    for route_kind in ("with_park", "without_park"):
+        preambles = []
+        for section_name, expected_heading in prompt_sections.items():
+            prompt = generation_processor._render_prompt(
+                f"{route_kind}_{section_name}.txt", **values
+            )
+
+            assert expected_heading in prompt
+            preambles.append(prompt.split(expected_heading, maxsplit=1)[0])
+            assert "Use short sentences." in prompt
+            assert "Clear, 20°C" in prompt
+            assert all(
+                heading not in prompt
+                for name, heading in prompt_sections.items()
+                if name != section_name
+            )
+        assert len(set(preambles)) == 1
 
 
 def test_worker_processor_falls_back_when_openai_is_unavailable(monkeypatch) -> None:
@@ -206,6 +281,17 @@ def test_luna_standard_cost_accounts_for_cached_input() -> None:
         cache_write_tokens=0,
         output_tokens=100_000,
     ) == 0.257
+
+
+def test_generation_usage_is_pooled_across_section_calls() -> None:
+    pooled = combine_generation_usage([_usage(), _usage(), _usage()])
+
+    assert pooled.model == "gpt-6-luna"
+    assert pooled.input_tokens == 300
+    assert pooled.cached_input_tokens == 30
+    assert pooled.output_tokens == 150
+    assert pooled.total_tokens == 450
+    assert pooled.cost_usd == 0.000102
 
 
 def test_openai_client_sends_strict_responses_schema(monkeypatch) -> None:

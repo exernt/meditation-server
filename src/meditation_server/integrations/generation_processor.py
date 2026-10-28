@@ -20,8 +20,8 @@ from meditation_server.integrations.openai_generation import (
     GeneratedText,
     GenerationUsage,
     OpenAiGenerationError,
+    combine_generation_usage,
     generate_text,
-    zero_usage,
 )
 
 
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 TARGET_WORDS_PER_MINUTE = 150
 WORD_COUNT_TOLERANCE = 0.2
-PROMPT_VERSION = "narration-2026-10-v3"
+PROMPT_VERSION = "narration-2026-10-v4"
 FOCUSED_ATTENTION_SHARE = 0.2
 COMPASSION_SHARE = 0.4
 CLOSING_SHARE = 0.4
@@ -126,31 +126,16 @@ def _walking_section_schema(segment_ids: Sequence[str]) -> dict[str, Any]:
     }
 
 
-def _narration_schema(
-    focused_segment_ids: Sequence[str], closing_segment_ids: Sequence[str]
-) -> dict[str, Any]:
+def _compassion_section_schema() -> dict[str, Any]:
     return {
         "type": "object",
         "properties": {
-            "focused_attention": _walking_section_schema(focused_segment_ids),
-            "compassion_meditation": {
-                "type": "object",
-                "properties": {
-                    "narration": {
-                        "type": "string",
-                        "pattern": NON_EMPTY_TEXT_PATTERN,
-                    }
-                },
-                "required": ["narration"],
-                "additionalProperties": False,
-            },
-            "closing_meditation": _walking_section_schema(closing_segment_ids),
+            "narration": {
+                "type": "string",
+                "pattern": NON_EMPTY_TEXT_PATTERN,
+            }
         },
-        "required": [
-            "focused_attention",
-            "compassion_meditation",
-            "closing_meditation",
-        ],
+        "required": ["narration"],
         "additionalProperties": False,
     }
 
@@ -326,7 +311,7 @@ def _fallback_narrations(
 
 
 async def _generate_narrations(
-    prompt: str,
+    prompts: dict[str, str],
     focused_segments: Sequence[EnrichedSegment],
     focused_phase: str,
     compassion_words: int,
@@ -339,18 +324,47 @@ async def _generate_narrations(
 ) -> tuple[dict[str, Any], GenerationUsage, bool]:
     focused_ids = [_segment_id(focused_phase, segment) for segment in focused_segments]
     closing_ids = [_segment_id(closing_phase, segment) for segment in closing_segments]
-    try:
-        generated = await generate_text(
-            prompt,
-            json_schema=_narration_schema(focused_ids, closing_ids),
-            schema_name="meditation_narrations",
-        )
-        if raw_output_observer is not None:
-            raw_output_observer(generated)
-    except OpenAiGenerationError:
+    generated_sections = await asyncio.gather(
+        generate_text(
+            prompts["focused_attention"],
+            json_schema=_walking_section_schema(focused_ids),
+            schema_name="focused_attention_narration",
+        ),
+        generate_text(
+            prompts["compassion_meditation"],
+            json_schema=_compassion_section_schema(),
+            schema_name="compassion_meditation_narration",
+        ),
+        generate_text(
+            prompts["closing_meditation"],
+            json_schema=_walking_section_schema(closing_ids),
+            schema_name="closing_meditation_narration",
+        ),
+        return_exceptions=True,
+    )
+    successful_generations = [
+        generated
+        for generated in generated_sections
+        if isinstance(generated, GeneratedText)
+    ]
+    usage = combine_generation_usage(
+        [generated.usage for generated in successful_generations]
+    )
+    generation_errors = [
+        error for error in generated_sections if isinstance(error, BaseException)
+    ]
+    for error in generation_errors:
+        if isinstance(error, asyncio.CancelledError):
+            raise error
+        if not isinstance(error, OpenAiGenerationError):
+            raise error
+    if generation_errors:
         if not settings.script_fallback_enabled():
-            raise
-        logger.warning("Using deterministic generation fallback", exc_info=True)
+            raise generation_errors[0]
+        logger.warning(
+            "Using deterministic generation fallback after section generation failed: %s",
+            ", ".join(type(error).__name__ for error in generation_errors),
+        )
         return (
             _fallback_narrations(
                 focused_segments,
@@ -359,12 +373,32 @@ async def _generate_narrations(
                 closing_phase,
                 has_park=has_park,
             ),
-            zero_usage(),
+            usage,
             True,
         )
 
     try:
-        narrations = _parse_narrations(generated.text, focused_ids, closing_ids)
+        narrations = {
+            section_name: json.loads(generated.text)
+            for section_name, generated in zip(
+                (
+                    "focused_attention",
+                    "compassion_meditation",
+                    "closing_meditation",
+                ),
+                successful_generations,
+                strict=True,
+            )
+        }
+        combined_generation = GeneratedText(
+            text=json.dumps(narrations, ensure_ascii=False, separators=(",", ":")),
+            usage=usage,
+        )
+        if raw_output_observer is not None:
+            raw_output_observer(combined_generation)
+        narrations = _parse_narrations(
+            combined_generation.text, focused_ids, closing_ids
+        )
         problems = _word_count_violations(
             narrations,
             focused_segments,
@@ -387,10 +421,10 @@ async def _generate_narrations(
                     closing_phase,
                     has_park=has_park,
                 ),
-                generated.usage,
+                usage,
                 True,
             )
-        return narrations, generated.usage, False
+        return narrations, usage, False
     except ValueError:
         if not settings.script_fallback_enabled():
             raise
@@ -403,7 +437,7 @@ async def _generate_narrations(
                 closing_phase,
                 has_park=has_park,
             ),
-            generated.usage,
+            usage,
             True,
         )
 
@@ -541,24 +575,37 @@ async def generate_without_park(
     closing_words = _words_for_seconds(payload.total_walking_time * CLOSING_SHARE)
     compassion_min, compassion_max = _word_range(compassion_words)
     closing_min, closing_max = _word_range(closing_words)
-    prompt = _render_prompt(
-        "without_park_narration.txt",
-        context=payload.context,
-        duration_minutes=max(1, round(payload.total_walking_time / 60)),
-        FAM_word_count=focused_words,
-        source_to_park=_route_context(focused_segments, focused_phase, nearby),
-        CM_word_count=compassion_words,
-        CM_min_words=compassion_min,
-        CM_max_words=compassion_max,
-        Closing_word_count=closing_words,
-        Closing_min_words=closing_min,
-        Closing_max_words=closing_max,
-        weatherCondition=weather,
-        study_parameters=payload.study_parameters.strip()
+    shared_prompt_values = {
+        "duration_minutes": max(1, round(payload.total_walking_time / 60)),
+        "weatherCondition": weather,
+        "study_parameters": payload.study_parameters.strip()
         or "No additional study instructions.",
-    )
+    }
+    prompts = {
+        "focused_attention": _render_prompt(
+            "without_park_focused_attention.txt",
+            **shared_prompt_values,
+            FAM_word_count=focused_words,
+            source_to_park=_route_context(focused_segments, focused_phase, nearby),
+        ),
+        "compassion_meditation": _render_prompt(
+            "without_park_compassion_meditation.txt",
+            **shared_prompt_values,
+            CM_word_count=compassion_words,
+            CM_min_words=compassion_min,
+            CM_max_words=compassion_max,
+        ),
+        "closing_meditation": _render_prompt(
+            "without_park_closing_meditation.txt",
+            **shared_prompt_values,
+            context=payload.context,
+            Closing_word_count=closing_words,
+            Closing_min_words=closing_min,
+            Closing_max_words=closing_max,
+        ),
+    }
     narrations, usage, fallback = await _generate_narrations(
-        prompt,
+        prompts,
         focused_segments,
         focused_phase,
         compassion_words,
@@ -613,23 +660,38 @@ async def generate_with_park(
     duration_seconds = (
         payload.to_park_time + payload.park_time + payload.park_to_destination_time
     )
-    prompt = _render_prompt(
-        "with_park_narration.txt",
-        context=payload.context,
-        duration_minutes=max(1, round(duration_seconds / 60)),
-        FAM_word_count=focused_words,
-        source_to_park=_route_context(focused_segments, focused_phase, nearby),
-        park_to_destination=_route_context(closing_segments, closing_phase, nearby),
-        CM_word_count=compassion_words,
-        CM_min_words=compassion_min,
-        CM_max_words=compassion_max,
-        Closing_word_count=closing_words,
-        weatherCondition=weather,
-        study_parameters=payload.study_parameters.strip()
+    shared_prompt_values = {
+        "duration_minutes": max(1, round(duration_seconds / 60)),
+        "weatherCondition": weather,
+        "study_parameters": payload.study_parameters.strip()
         or "No additional study instructions.",
-    )
+    }
+    prompts = {
+        "focused_attention": _render_prompt(
+            "with_park_focused_attention.txt",
+            **shared_prompt_values,
+            FAM_word_count=focused_words,
+            source_to_park=_route_context(focused_segments, focused_phase, nearby),
+        ),
+        "compassion_meditation": _render_prompt(
+            "with_park_compassion_meditation.txt",
+            **shared_prompt_values,
+            CM_word_count=compassion_words,
+            CM_min_words=compassion_min,
+            CM_max_words=compassion_max,
+        ),
+        "closing_meditation": _render_prompt(
+            "with_park_closing_meditation.txt",
+            **shared_prompt_values,
+            context=payload.context,
+            park_to_destination=_route_context(
+                closing_segments, closing_phase, nearby
+            ),
+            Closing_word_count=closing_words,
+        ),
+    }
     narrations, usage, fallback = await _generate_narrations(
-        prompt,
+        prompts,
         focused_segments,
         focused_phase,
         compassion_words,
