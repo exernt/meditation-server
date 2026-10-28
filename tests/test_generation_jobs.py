@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
 from uuid import UUID, uuid4
 
 import pytest
@@ -292,6 +293,118 @@ def test_worker_acknowledges_already_claimed_or_terminal_job(monkeypatch) -> Non
         "attributes": {"ApproximateReceiveCount": "1"},
     }]}, object()))
     assert result == {"batchItemFailures": []}
+
+
+def test_worker_archives_and_logs_completed_generation(monkeypatch, caplog) -> None:
+    job_id = uuid4()
+    result_payload = {
+        "script": {"fallback": False, "model": "gpt-6-luna"},
+        "usage": {
+            "model": "gpt-6-luna",
+            "input_tokens": 100,
+            "output_tokens": 200,
+            "total_tokens": 300,
+        },
+        "generation_cost_usd": 0.001,
+    }
+    monkeypatch.setattr(generation, "claim_generation_job", AsyncMock(return_value={
+        "id": job_id,
+        "kind": "without_park",
+        "request_payload": {},
+        "attempt_count": 1,
+    }))
+    async def generate(_job, *, raw_output_observer):
+        raw_output_observer(
+            SimpleNamespace(
+                text='{"raw":"narration"}',
+                usage=SimpleNamespace(model="gpt-6-luna"),
+            )
+        )
+        return result_payload
+
+    monkeypatch.setattr(generation, "_generate", AsyncMock(side_effect=generate))
+    monkeypatch.setattr(
+        generation, "complete_generation_job", AsyncMock(return_value=True)
+    )
+    archive = Mock(return_value=f"generation-results/2026/10/28/{job_id}.json")
+    monkeypatch.setattr(generation, "archive_generation_result", archive)
+    raw_archive = Mock(
+        return_value=(
+            f"generation-results/2026/10/28/{job_id}.attempt-1.raw.json"
+        )
+    )
+    monkeypatch.setattr(generation, "archive_raw_generation", raw_archive)
+
+    with caplog.at_level("INFO"):
+        handled = asyncio.run(generation._handle_record({
+            "messageId": "message-1",
+            "body": f'{{"job_id":"{job_id}"}}',
+            "attributes": {"ApproximateReceiveCount": "1"},
+        }, object()))
+
+    assert handled is True
+    assert archive.call_args.kwargs == {
+        "job_id": job_id,
+        "kind": "without_park",
+        "result": result_payload,
+    }
+    assert raw_archive.call_args.kwargs == {
+        "job_id": job_id,
+        "kind": "without_park",
+        "attempt_count": 1,
+        "raw_output": '{"raw":"narration"}',
+        "model": "gpt-6-luna",
+    }
+    outcome = next(record.message for record in caplog.records if "generation_outcome" in record.message)
+    assert f'"job_id":"{job_id}"' in outcome
+    assert '"fallback":false' in outcome
+    assert '"archived":true' in outcome
+    assert '"raw_archived":true' in outcome
+
+
+def test_worker_archives_raw_generation_before_retrying_validation_failure(
+    monkeypatch,
+) -> None:
+    job_id = uuid4()
+    monkeypatch.setattr(generation, "claim_generation_job", AsyncMock(return_value={
+        "id": job_id,
+        "kind": "park",
+        "request_payload": {},
+        "attempt_count": 2,
+    }))
+
+    async def fail_validation(_job, *, raw_output_observer):
+        raw_output_observer(
+            SimpleNamespace(
+                text='{"raw":"invalid narration"}',
+                usage=SimpleNamespace(model="gpt-6-luna"),
+            )
+        )
+        raise ValueError("Generated narration contains an empty text block")
+
+    monkeypatch.setattr(
+        generation, "_generate", AsyncMock(side_effect=fail_validation)
+    )
+    raw_archive = Mock(return_value="generation-results/raw.json")
+    monkeypatch.setattr(generation, "archive_raw_generation", raw_archive)
+    release = AsyncMock(return_value=True)
+    monkeypatch.setattr(generation, "release_generation_job", release)
+
+    handled = asyncio.run(generation._handle_record({
+        "messageId": "message-2",
+        "body": f'{{"job_id":"{job_id}"}}',
+        "attributes": {"ApproximateReceiveCount": "2"},
+    }, object()))
+
+    assert handled is False
+    assert raw_archive.call_args.kwargs == {
+        "job_id": job_id,
+        "kind": "park",
+        "attempt_count": 2,
+        "raw_output": '{"raw":"invalid narration"}',
+        "model": "gpt-6-luna",
+    }
+    assert release.await_args.kwargs["terminal"] is False
 
 
 def test_worker_releases_transient_failure_for_retry(monkeypatch) -> None:

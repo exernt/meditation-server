@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from aws_cdk import BundlingOptions, Duration, RemovalPolicy, Stack
+from aws_cdk import BundlingOptions, CfnOutput, Duration, RemovalPolicy, Stack
 from aws_cdk import aws_cloudwatch as cloudwatch
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_lambda as lambda_
@@ -11,6 +11,7 @@ from aws_cdk import aws_lambda_event_sources as event_sources
 from aws_cdk import aws_logs as logs
 from aws_cdk import aws_scheduler as scheduler
 from aws_cdk import aws_secretsmanager as secretsmanager
+from aws_cdk import aws_s3 as s3
 from aws_cdk import aws_sqs as sqs
 from cdk_nag import NagSuppressions
 from constructs import Construct
@@ -60,6 +61,46 @@ class GenerationStack(Stack):
             ),
         )
 
+        self.script_archive: s3.Bucket | None = None
+        if not config.is_production:
+            self.script_archive = s3.Bucket(
+                self,
+                "ScriptArchive",
+                block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
+                encryption=s3.BucketEncryption.S3_MANAGED,
+                enforce_ssl=True,
+                lifecycle_rules=[
+                    s3.LifecycleRule(
+                        id="ExpireGenerationResultsAfterSevenDays",
+                        enabled=True,
+                        expiration=Duration.days(7),
+                        abort_incomplete_multipart_upload_after=Duration.days(1),
+                    )
+                ],
+                removal_policy=RemovalPolicy.DESTROY,
+                auto_delete_objects=True,
+            )
+            NagSuppressions.add_resource_suppressions(
+                self.script_archive,
+                [
+                    {
+                        "id": "AwsSolutions-S1",
+                        "reason": (
+                            "This short-lived development-only bucket is written by one "
+                            "Lambda role; generation outcomes and archive keys are logged "
+                            "to the worker's seven-day CloudWatch log group."
+                        ),
+                    }
+                ],
+                apply_to_children=False,
+            )
+            CfnOutput(
+                self,
+                "ScriptArchiveBucketName",
+                value=self.script_archive.bucket_name,
+                description="Private dev generation-result archive; objects expire after seven days.",
+            )
+
         worker_role = iam.Role(
             self,
             "WorkerRole",
@@ -70,7 +111,11 @@ class GenerationStack(Stack):
             self,
             "WorkerLogs",
             log_group_name=f"/aws/lambda/{config.prefix}-generation-worker",
-            retention=logs.RetentionDays.TWO_WEEKS,
+            retention=(
+                logs.RetentionDays.THREE_MONTHS
+                if config.is_production
+                else logs.RetentionDays.ONE_WEEK
+            ),
             removal_policy=log_removal_policy,
         )
         worker_logs.grant_write(worker_role)
@@ -96,6 +141,33 @@ class GenerationStack(Stack):
             self, "OpenAiSecret", config.openai_secret_arn
         )
         openai_secret.grant_read(worker_role)
+        if self.script_archive is not None:
+            worker_role.add_to_policy(
+                iam.PolicyStatement(
+                    sid="ArchiveGenerationResults",
+                    actions=["s3:PutObject"],
+                    resources=[
+                        self.script_archive.arn_for_objects("generation-results/*")
+                    ],
+                )
+            )
+            NagSuppressions.add_resource_suppressions(
+                worker_role,
+                [
+                    {
+                        "id": "AwsSolutions-IAM5",
+                        "reason": (
+                            "Each generation job has a distinct object key below the "
+                            "generation-results prefix; PutObject is the only allowed "
+                            "S3 action and bucket access is not granted."
+                        ),
+                        "appliesTo": [
+                            "Resource::<ScriptArchive108F42B0.Arn>/generation-results/*"
+                        ],
+                    }
+                ],
+                apply_to_children=True,
+            )
 
         project_root = Path(__file__).resolve().parents[2]
         def lambda_code(requirements_file: str):
@@ -110,6 +182,22 @@ class GenerationStack(Stack):
                     ],
                 ),
             )
+        worker_environment = {
+            "STAGE": config.stage,
+            "DATABASE_RESOURCE_ARN": config.database_cluster_arn,
+            "DATABASE_SECRET_ARN": data_stack.application_secret.secret_arn,
+            "DATABASE_NAME": config.database_name,
+            "GOOGLE_MAPS_SECRET_ARN": google_secret.secret_arn,
+            "OPENAI_SECRET_ARN": openai_secret.secret_arn,
+            "OPENAI_MODEL": "gpt-6-luna",
+            "ENABLE_NEARBY_CONTEXT": "true",
+            "SCRIPT_FALLBACK_ENABLED": "true",
+        }
+        if self.script_archive is not None:
+            worker_environment["GENERATION_ARCHIVE_BUCKET"] = (
+                self.script_archive.bucket_name
+            )
+
         self.worker = lambda_.Function(
             self,
             "Worker",
@@ -121,17 +209,7 @@ class GenerationStack(Stack):
             log_group=worker_logs,
             timeout=Duration.minutes(5),
             memory_size=1024,
-            environment={
-                "STAGE": config.stage,
-                "DATABASE_RESOURCE_ARN": config.database_cluster_arn,
-                "DATABASE_SECRET_ARN": data_stack.application_secret.secret_arn,
-                "DATABASE_NAME": config.database_name,
-                "GOOGLE_MAPS_SECRET_ARN": google_secret.secret_arn,
-                "OPENAI_SECRET_ARN": openai_secret.secret_arn,
-                "OPENAI_MODEL": "gpt-6-luna",
-                "ENABLE_NEARBY_CONTEXT": "true",
-                "SCRIPT_FALLBACK_ENABLED": "true",
-            },
+            environment=worker_environment,
         )
         self.queue.grant_consume_messages(worker_role)
         self.worker.add_event_source(

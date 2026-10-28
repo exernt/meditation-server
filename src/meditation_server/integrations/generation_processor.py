@@ -5,6 +5,7 @@ import json
 import logging
 import math
 import re
+from collections.abc import Callable
 from typing import Any, Sequence
 
 from meditation_server import settings
@@ -16,6 +17,7 @@ from meditation_server.integrations.google_context import (
     weather_condition,
 )
 from meditation_server.integrations.openai_generation import (
+    GeneratedText,
     GenerationUsage,
     OpenAiGenerationError,
     generate_text,
@@ -31,6 +33,7 @@ PROMPT_VERSION = "narration-2026-10-v3"
 FOCUSED_ATTENTION_SHARE = 0.2
 COMPASSION_SHARE = 0.4
 CLOSING_SHARE = 0.4
+NON_EMPTY_TEXT_PATTERN = r"\S"
 
 
 def _words_for_seconds(seconds: float) -> int:
@@ -90,6 +93,7 @@ def _segment_narrations_schema(segment_ids: Sequence[str]) -> dict[str, Any]:
         "properties": {
             segment_id: {
                 "type": "string",
+                "pattern": NON_EMPTY_TEXT_PATTERN,
                 "description": f"Narration for route segment {segment_id}.",
             }
             for segment_id in segment_ids
@@ -103,9 +107,15 @@ def _walking_section_schema(segment_ids: Sequence[str]) -> dict[str, Any]:
     return {
         "type": "object",
         "properties": {
-            "opening_narration": {"type": "string"},
+            "opening_narration": {
+                "type": "string",
+                "pattern": NON_EMPTY_TEXT_PATTERN,
+            },
             "segment_narrations": _segment_narrations_schema(segment_ids),
-            "closing_narration": {"type": "string"},
+            "closing_narration": {
+                "type": "string",
+                "pattern": NON_EMPTY_TEXT_PATTERN,
+            },
         },
         "required": [
             "opening_narration",
@@ -125,7 +135,12 @@ def _narration_schema(
             "focused_attention": _walking_section_schema(focused_segment_ids),
             "compassion_meditation": {
                 "type": "object",
-                "properties": {"narration": {"type": "string"}},
+                "properties": {
+                    "narration": {
+                        "type": "string",
+                        "pattern": NON_EMPTY_TEXT_PATTERN,
+                    }
+                },
                 "required": ["narration"],
                 "additionalProperties": False,
             },
@@ -320,6 +335,7 @@ async def _generate_narrations(
     standalone_closing_words: int,
     *,
     has_park: bool,
+    raw_output_observer: Callable[[GeneratedText], None] | None = None,
 ) -> tuple[dict[str, Any], GenerationUsage, bool]:
     focused_ids = [_segment_id(focused_phase, segment) for segment in focused_segments]
     closing_ids = [_segment_id(closing_phase, segment) for segment in closing_segments]
@@ -329,6 +345,8 @@ async def _generate_narrations(
             json_schema=_narration_schema(focused_ids, closing_ids),
             schema_name="meditation_narrations",
         )
+        if raw_output_observer is not None:
+            raw_output_observer(generated)
     except OpenAiGenerationError:
         if not settings.script_fallback_enabled():
             raise
@@ -505,7 +523,11 @@ def _script_response(
     }
 
 
-async def generate_without_park(payload: ScriptWithoutParkRequest) -> dict[str, Any]:
+async def generate_without_park(
+    payload: ScriptWithoutParkRequest,
+    *,
+    raw_output_observer: Callable[[GeneratedText], None] | None = None,
+) -> dict[str, Any]:
     weather, focused_segments = await asyncio.gather(
         weather_condition(payload.destination), enrich_route(payload.route_steps)
     )
@@ -544,6 +566,7 @@ async def generate_without_park(payload: ScriptWithoutParkRequest) -> dict[str, 
         closing_phase,
         closing_words,
         has_park=False,
+        raw_output_observer=raw_output_observer,
     )
     return _script_response(
         duration_minutes=max(1, round(payload.total_walking_time / 60)),
@@ -566,7 +589,11 @@ async def generate_without_park(payload: ScriptWithoutParkRequest) -> dict[str, 
     )
 
 
-async def generate_with_park(payload: ScriptWithParkRequest) -> dict[str, Any]:
+async def generate_with_park(
+    payload: ScriptWithParkRequest,
+    *,
+    raw_output_observer: Callable[[GeneratedText], None] | None = None,
+) -> dict[str, Any]:
     weather, focused_segments, closing_segments = await asyncio.gather(
         weather_condition(payload.park),
         enrich_route(payload.source_to_park_steps),
@@ -610,6 +637,7 @@ async def generate_with_park(payload: ScriptWithParkRequest) -> dict[str, Any]:
         closing_phase,
         closing_words,
         has_park=True,
+        raw_output_observer=raw_output_observer,
     )
     return _script_response(
         duration_minutes=max(1, round(duration_seconds / 60)),

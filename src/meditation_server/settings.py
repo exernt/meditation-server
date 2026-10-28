@@ -187,3 +187,9 @@ def nearby_context_enabled() -> bool:
 
 def script_fallback_enabled() -> bool:
     return _boolean("SCRIPT_FALLBACK_ENABLED", True)
+
+
+def generation_archive_bucket() -> str | None:
+    """Return the optional bucket used to archive generation results."""
+    value = os.getenv("GENERATION_ARCHIVE_BUCKET", "").strip()
+    return value or None

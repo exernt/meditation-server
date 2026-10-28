@@ -41,8 +41,43 @@ def test_generation_stack_has_worker_maintenance_and_schedules(monkeypatch) -> N
 
     template = assertions.Template.from_stack(generation)
     template.resource_count_is("AWS::SQS::Queue", 3)
-    template.resource_count_is("AWS::Lambda::Function", 2)
+    # Worker, maintenance, and the dev bucket's auto-delete custom resource.
+    template.resource_count_is("AWS::Lambda::Function", 3)
     template.resource_count_is("AWS::Scheduler::Schedule", 2)
+    template.resource_count_is("AWS::S3::Bucket", 1)
+    template.has_resource_properties(
+        "AWS::S3::Bucket",
+        {
+            "BucketEncryption": {
+                "ServerSideEncryptionConfiguration": [
+                    {
+                        "ServerSideEncryptionByDefault": {
+                            "SSEAlgorithm": "AES256"
+                        }
+                    }
+                ]
+            },
+            "LifecycleConfiguration": {
+                "Rules": assertions.Match.array_with(
+                    [
+                        assertions.Match.object_like(
+                            {
+                                "Id": "ExpireGenerationResultsAfterSevenDays",
+                                "ExpirationInDays": 7,
+                                "Status": "Enabled",
+                            }
+                        )
+                    ]
+                )
+            },
+            "PublicAccessBlockConfiguration": {
+                "BlockPublicAcls": True,
+                "BlockPublicPolicy": True,
+                "IgnorePublicAcls": True,
+                "RestrictPublicBuckets": True,
+            },
+        },
+    )
     template.has_resource_properties(
         "AWS::Scheduler::Schedule",
         {
@@ -62,6 +97,7 @@ def test_generation_stack_has_worker_maintenance_and_schedules(monkeypatch) -> N
                         "OPENAI_MODEL": "gpt-6-luna",
                         "ENABLE_NEARBY_CONTEXT": "true",
                         "SCRIPT_FALLBACK_ENABLED": "true",
+                        "GENERATION_ARCHIVE_BUCKET": assertions.Match.any_value(),
                     }
                 )
             },

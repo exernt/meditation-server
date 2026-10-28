@@ -103,10 +103,16 @@ def test_worker_processor_enriches_and_minimises_openai_prompt(monkeypatch) -> N
         "lookup_nearby_features",
         AsyncMock(return_value={"source_to_destination_1": ["Royal Park"]}),
     )
-    generate = AsyncMock(return_value=_generated_text())
+    generated = _generated_text()
+    generate = AsyncMock(return_value=generated)
     monkeypatch.setattr(generation_processor, "generate_text", generate)
+    raw_outputs = []
 
-    result = asyncio.run(generation_processor.generate_without_park(_payload()))
+    result = asyncio.run(
+        generation_processor.generate_without_park(
+            _payload(), raw_output_observer=raw_outputs.append
+        )
+    )
 
     prompt = generate.await_args.args[0]
     assert "Royal Park" in prompt
@@ -116,6 +122,7 @@ def test_worker_processor_enriches_and_minimises_openai_prompt(monkeypatch) -> N
     assert "144.96" not in prompt
     assert "encoded" not in prompt
     assert generate.await_args.kwargs["schema_name"] == "meditation_narrations"
+    assert raw_outputs == [generated]
     assert result["generation_cost_usd"] == 0.000034
     assert result["usage"]["total_tokens"] == 150
     assert result["script"]["fallback"] is False
@@ -123,6 +130,27 @@ def test_worker_processor_enriches_and_minimises_openai_prompt(monkeypatch) -> N
     assert segment["id"] == "source_to_destination_1"
     assert segment["elevation"]["gain_m"] == 9.9
     assert segment["nearby_features"] == ["Royal Park"]
+
+
+def test_narration_schema_requires_non_whitespace_text() -> None:
+    schema = generation_processor._narration_schema(
+        ["source_to_destination_1"], ["park_to_destination_1"]
+    )
+
+    focused = schema["properties"]["focused_attention"]["properties"]
+    closing = schema["properties"]["closing_meditation"]["properties"]
+    compassion = schema["properties"]["compassion_meditation"]["properties"]
+    text_schemas = [
+        focused["opening_narration"],
+        focused["segment_narrations"]["properties"]["source_to_destination_1"],
+        focused["closing_narration"],
+        compassion["narration"],
+        closing["opening_narration"],
+        closing["segment_narrations"]["properties"]["park_to_destination_1"],
+        closing["closing_narration"],
+    ]
+
+    assert all(value["pattern"] == r"\S" for value in text_schemas)
 
 
 def test_worker_processor_falls_back_when_openai_is_unavailable(monkeypatch) -> None:

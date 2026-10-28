@@ -45,6 +45,19 @@ def _step(index: int, start_lon: float, end_lon: float, distance_m: int = 100):
     )
 
 
+def _single_coordinate_step() -> RouteStepInfo:
+    point = LatLng(lat=38.5, lon=-120.2)
+    return RouteStepInfo(
+        index=1,
+        instruction="Continue",
+        start=point,
+        end=point,
+        duration_s=0,
+        distance_m=0,
+        polyline="_p~iF~ps|U",  # Encodes the single point (38.5, -120.2).
+    )
+
+
 def _segment(index: int, start_lon: float, end_lon: float, distance_m: int):
     step = _step(index, start_lon, end_lon, distance_m)
     return EnrichedSegment(
@@ -90,6 +103,44 @@ def test_enrich_route_batches_all_step_boundaries_into_one_leg_request(monkeypat
     assert enriched[0].elevation_classification == "high elevation (uphill)"
     assert enriched[1].elevation_gain_m == -5.0
     assert enriched[1].elevation_classification == "low elevation (mostly flat)"
+
+
+def test_enrich_route_supports_a_single_coordinate_step(monkeypatch):
+    _FakeAsyncClient.calls = []
+    _FakeAsyncClient.get_payload = {
+        "status": "OK",
+        "results": [{"elevation": 12.5}],
+    }
+    monkeypatch.setattr(google_context.httpx, "AsyncClient", _FakeAsyncClient)
+    monkeypatch.setattr(google_context.settings, "google_maps_api_key", lambda: "key")
+
+    enriched = asyncio.run(google_context.enrich_route([_single_coordinate_step()]))
+
+    assert len(_FakeAsyncClient.calls) == 1
+    _, _, request = _FakeAsyncClient.calls[0]
+    assert request["params"]["locations"] == "38.500000,-120.200000"
+    assert len(enriched) == 1
+    assert enriched[0].elevation_start_m == 12.5
+    assert enriched[0].elevation_end_m == 12.5
+    assert enriched[0].elevation_gain_m == 0.0
+    assert enriched[0].elevation_classification == "low elevation (mostly flat)"
+
+
+def test_enrich_route_keeps_single_coordinate_step_when_elevation_is_missing(
+    monkeypatch,
+):
+    _FakeAsyncClient.calls = []
+    _FakeAsyncClient.get_payload = {"status": "ZERO_RESULTS", "results": []}
+    monkeypatch.setattr(google_context.httpx, "AsyncClient", _FakeAsyncClient)
+    monkeypatch.setattr(google_context.settings, "google_maps_api_key", lambda: "key")
+
+    enriched = asyncio.run(google_context.enrich_route([_single_coordinate_step()]))
+
+    assert len(enriched) == 1
+    assert enriched[0].elevation_classification == "unknown"
+    assert enriched[0].elevation_start_m == 0.0
+    assert enriched[0].elevation_end_m == 0.0
+    assert enriched[0].elevation_gain_m == 0.0
 
 
 def test_nearby_features_searches_once_at_leg_distance_midpoint(monkeypatch):
