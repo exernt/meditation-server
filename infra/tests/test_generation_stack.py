@@ -26,6 +26,9 @@ def test_generation_stack_has_worker_maintenance_and_schedules(monkeypatch) -> N
             "arn:aws:secretsmanager:ap-southeast-2:111111111111:secret:openai-XyZ789"
         ),
         "passwordResetFromEmail": "no-reply@example.com",
+        "passwordResetLinkBase": (
+            "https://api.example.com/auth/password-reset/open"
+        ),
         "emailVerificationLinkBase": (
             "https://api.example.com/auth/email-verification/open"
         ),

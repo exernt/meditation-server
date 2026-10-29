@@ -162,6 +162,7 @@ class ApiStack(Stack):
                 "GENERATION_QUEUE_URL": generation_stack.queue.queue_url,
                 "EMAIL_BACKEND": "ses",
                 "PASSWORD_RESET_FROM_EMAIL": config.password_reset_from_email,
+                "PASSWORD_RESET_LINK_BASE": config.password_reset_link_base,
                 "EMAIL_VERIFICATION_LINK_BASE": config.email_verification_link_base,
                 "TTS_PROVIDER": config.tts_provider,
                 "TTS_VOICE_ID": "Russell",

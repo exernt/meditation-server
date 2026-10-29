@@ -50,6 +50,7 @@ class EnvironmentConfig:
     google_maps_secret_arn: str
     openai_secret_arn: str
     password_reset_from_email: str
+    password_reset_link_base: str
     email_verification_link_base: str
     tts_provider: str
 
@@ -87,6 +88,20 @@ class EnvironmentConfig:
         if tts_provider not in {"disabled", "polly"}:
             raise ValueError("ttsProvider must be disabled or polly")
 
+        password_reset_link = str(_required(app, "passwordResetLinkBase")).strip()
+        parsed_password_reset_link = urlsplit(password_reset_link)
+        if (
+            parsed_password_reset_link.scheme != "https"
+            or not parsed_password_reset_link.netloc
+            or not parsed_password_reset_link.path.endswith("/auth/password-reset/open")
+            or parsed_password_reset_link.query
+            or parsed_password_reset_link.fragment
+        ):
+            raise ValueError(
+                "passwordResetLinkBase must be an HTTPS URL ending in "
+                "/auth/password-reset/open with no query or fragment"
+            )
+
         verification_link = str(_required(app, "emailVerificationLinkBase")).strip()
         parsed_link = urlsplit(verification_link)
         if (
@@ -117,6 +132,7 @@ class EnvironmentConfig:
             google_maps_secret_arn=str(_required(app, "googleMapsSecretArn")).strip(),
             openai_secret_arn=str(_required(app, "openAiSecretArn")).strip(),
             password_reset_from_email=str(_required(app, "passwordResetFromEmail")).strip(),
+            password_reset_link_base=password_reset_link,
             email_verification_link_base=verification_link,
             tts_provider=tts_provider,
         )

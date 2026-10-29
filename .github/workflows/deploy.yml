@@ -61,6 +61,7 @@ jobs:
             -c googleMapsSecretArn=${{ vars.GOOGLE_MAPS_SECRET_ARN }}
             -c openAiSecretArn=${{ vars.OPENAI_SECRET_ARN }}
             -c passwordResetFromEmail=${{ vars.PASSWORD_RESET_FROM_EMAIL }}
+            -c passwordResetLinkBase=${{ vars.PASSWORD_RESET_LINK_BASE }}
             -c emailVerificationLinkBase=${{ vars.EMAIL_VERIFICATION_LINK_BASE }}
             -c ttsProvider=${{ vars.TTS_PROVIDER }}
       - name: Review CloudFormation change set
@@ -76,6 +77,7 @@ jobs:
             -c googleMapsSecretArn=${{ vars.GOOGLE_MAPS_SECRET_ARN }}
             -c openAiSecretArn=${{ vars.OPENAI_SECRET_ARN }}
             -c passwordResetFromEmail=${{ vars.PASSWORD_RESET_FROM_EMAIL }}
+            -c passwordResetLinkBase=${{ vars.PASSWORD_RESET_LINK_BASE }}
             -c emailVerificationLinkBase=${{ vars.EMAIL_VERIFICATION_LINK_BASE }}
             -c ttsProvider=${{ vars.TTS_PROVIDER }}
       - name: Deploy approved stacks
@@ -91,6 +93,7 @@ jobs:
             -c googleMapsSecretArn=${{ vars.GOOGLE_MAPS_SECRET_ARN }}
             -c openAiSecretArn=${{ vars.OPENAI_SECRET_ARN }}
             -c passwordResetFromEmail=${{ vars.PASSWORD_RESET_FROM_EMAIL }}
+            -c passwordResetLinkBase=${{ vars.PASSWORD_RESET_LINK_BASE }}
             -c emailVerificationLinkBase=${{ vars.EMAIL_VERIFICATION_LINK_BASE }}
             -c ttsProvider=${{ vars.TTS_PROVIDER }}
 

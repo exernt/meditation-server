@@ -17,6 +17,9 @@ def _app(**values: object) -> cdk.App:
         "googleMapsSecretArn": "arn:aws:secretsmanager:ap-southeast-2:111111111111:secret:google",
         "openAiSecretArn": "arn:aws:secretsmanager:ap-southeast-2:111111111111:secret:openai",
         "passwordResetFromEmail": "no-reply@example.com",
+        "passwordResetLinkBase": (
+            "https://api.example.com/auth/password-reset/open"
+        ),
         "emailVerificationLinkBase": (
             "https://api.example.com/auth/email-verification/open"
         ),
@@ -61,6 +64,30 @@ def test_accepts_api_gateway_stage_in_email_verification_link() -> None:
     config = EnvironmentConfig.from_app(_app(emailVerificationLinkBase=link))
 
     assert config.email_verification_link_base == link
+
+
+def test_accepts_api_gateway_stage_in_password_reset_link() -> None:
+    link = (
+        "https://example.execute-api.ap-southeast-2.amazonaws.com/"
+        "dev/auth/password-reset/open"
+    )
+
+    config = EnvironmentConfig.from_app(_app(passwordResetLinkBase=link))
+
+    assert config.password_reset_link_base == link
+
+
+@pytest.mark.parametrize(
+    "link",
+    [
+        "http://api.example.com/auth/password-reset/open",
+        "https://api.example.com/auth/password-reset/open?token=placeholder",
+        "https://api.example.com/auth/password-reset",
+    ],
+)
+def test_rejects_invalid_password_reset_link(link: str) -> None:
+    with pytest.raises(ValueError, match="passwordResetLinkBase"):
+        EnvironmentConfig.from_app(_app(passwordResetLinkBase=link))
 
 
 def test_rejects_zero_api_reserved_concurrency() -> None:

@@ -147,6 +147,7 @@ Configure these variables separately in each environment:
 | `GOOGLE_MAPS_SECRET_ARN` | Existing Secrets Manager ARN; API and generation worker |
 | `OPENAI_SECRET_ARN` | Existing Secrets Manager ARN; worker only |
 | `PASSWORD_RESET_FROM_EMAIL` | Verified SES sender |
+| `PASSWORD_RESET_LINK_BASE` | HTTPS API URL ending in `/auth/password-reset/open` |
 | `EMAIL_VERIFICATION_LINK_BASE` | HTTPS API URL ending in `/auth/email-verification/open` |
 | `TTS_PROVIDER` | `polly` or `disabled` |
 
@@ -183,6 +184,7 @@ npx cdk deploy WmData-dev --profile wm-admin --require-approval broadening `
   -c googleMapsSecretArn=GOOGLE_SECRET_ARN `
   -c openAiSecretArn=OPENAI_SECRET_ARN `
   -c passwordResetFromEmail=VERIFIED_SES_EMAIL `
+  -c passwordResetLinkBase=https://example.invalid/auth/password-reset/open `
   -c emailVerificationLinkBase=https://example.invalid/auth/email-verification/open
 ```
 

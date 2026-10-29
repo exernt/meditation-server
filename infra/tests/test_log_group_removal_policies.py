@@ -35,6 +35,9 @@ def _synthesized_log_groups(
                 "secret:openai-XyZ789"
             ),
             "passwordResetFromEmail": "no-reply@example.com",
+            "passwordResetLinkBase": (
+                "https://api.example.com/auth/password-reset/open"
+            ),
             "emailVerificationLinkBase": (
                 "https://api.example.com/auth/email-verification/open"
             ),
