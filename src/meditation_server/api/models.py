@@ -11,7 +11,7 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=1024)
     gender: str | None = Field(default=None, min_length=1, max_length=100)
-    age: int | None = Field(default=None, ge=0, le=150)
+    age: int | None = Field(default=None, ge=18, le=120)
     researcher_institution: str | None = Field(default=None, min_length=1, max_length=255)
 
     @field_validator("email", mode="before")
@@ -53,6 +53,16 @@ class VerificationConfirmRequest(BaseModel):
 
 class ResearcherRequest(BaseModel):
     institution: str | None = None
+
+
+class ProfileUpdateRequest(BaseModel):
+    age: int = Field(ge=18, le=120)
+    gender: str = Field(min_length=1, max_length=100)
+
+    @field_validator("gender", mode="before")
+    @classmethod
+    def normalize_gender(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
 
 
 class CreateStudyRequest(BaseModel):

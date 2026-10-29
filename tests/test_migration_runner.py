@@ -53,9 +53,10 @@ class MigrationLoadingTests(unittest.TestCase):
     def test_repository_migrations_are_valid(self) -> None:
         directory = Path(__file__).resolve().parents[1] / "migrations"
         migrations = load_migrations(directory)
-        self.assertEqual([migration.version for migration in migrations], ["0001", "0002"])
+        self.assertEqual([migration.version for migration in migrations], ["0001", "0002", "0003"])
         self.assertGreater(len(migrations[0].statements), 20)
         self.assertGreater(len(migrations[1].statements), 5)
+        self.assertEqual(len(migrations[2].statements), 3)
 
     def test_loads_ordered_statements_and_checksum(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

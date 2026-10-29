@@ -15,6 +15,7 @@ from meditation_server.api.dependencies import (
 from meditation_server.api.models import (
     EmailRequest,
     LoginRequest,
+    ProfileUpdateRequest,
     RegisterRequest,
     ResearcherRequest,
     ResetConfirmRequest,
@@ -448,9 +449,55 @@ async def reject_researcher(user_id: UUID, db: DatabaseDependency):
 
 @router.get("/me")
 async def me(user: CurrentUserDependency, db: DatabaseDependency):
-    institution = verified_at = None
-    if user.role == "researcher":
-        profile = await db.execute("SELECT institution,verified_at FROM researcher_profiles WHERE user_id=:id::uuid", {"id": user.id})
-        if profile.rows:
-            institution, verified_at = profile.rows[0]["institution"], profile.rows[0]["verified_at"]
-    return {"user_id": user.id, "email": user.email, "role": user.role, "institution": institution, "verified_at": verified_at}
+    result = await db.execute(
+        """SELECT users.gender, users.age, profile.institution, profile.verified_at
+           FROM users
+           LEFT JOIN researcher_profiles AS profile ON profile.user_id = users.id
+           WHERE users.id=:id::uuid""",
+        {"id": user.id},
+    )
+    profile = result.one()
+    return {
+        "user_id": user.id,
+        "email": user.email,
+        "role": user.role,
+        "age": profile["age"],
+        "gender": profile["gender"],
+        "institution": profile["institution"] if user.role == "researcher" else None,
+        "verified_at": profile["verified_at"] if user.role == "researcher" else None,
+    }
+
+
+@router.put("/me")
+async def update_me(payload: ProfileUpdateRequest, user: CurrentUserDependency, db: DatabaseDependency):
+    result = await db.execute(
+        """UPDATE users SET age=:age, gender=:gender
+           WHERE id=:id::uuid
+           RETURNING age, gender""",
+        {"id": user.id, "age": payload.age, "gender": payload.gender},
+    )
+    return dict(result.one())
+
+
+@router.delete("/me")
+async def delete_me(user: CurrentUserDependency, db: DatabaseDependency):
+    async with db.transaction() as tx:
+        await db.execute(
+            """UPDATE users SET session_version=session_version+1
+               WHERE id=:id::uuid""",
+            {"id": user.id},
+            transaction=tx,
+        )
+        await db.execute(
+            """UPDATE refresh_tokens SET revoked_at=now()
+               WHERE user_id=:id::uuid AND revoked_at IS NULL""",
+            {"id": user.id},
+            transaction=tx,
+        )
+        await _record_event(db, "account_deleted", user_id=user.id, transaction=tx)
+        await db.execute(
+            "DELETE FROM users WHERE id=:id::uuid",
+            {"id": user.id},
+            transaction=tx,
+        )
+    return _message("Account deleted")

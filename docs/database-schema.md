@@ -11,6 +11,11 @@ truth. Update this diagram whenever a migration adds, removes, or changes a
 table or foreign key. `wm_schema_migrations` is created by the migration runner
 rather than by a numbered migration.
 
+`users.age` is optional for legacy/uncompleted profiles; when present it is
+constrained to 18–120. Deleting a user sets
+`questionnaire_responses.respondent_id` to `NULL`, preserving submitted answers
+without retaining the deleted account reference.
+
 ## Entity-relationship diagram
 
 ```mermaid

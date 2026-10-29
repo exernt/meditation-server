@@ -46,6 +46,9 @@ participant disclosures must not be written to application or API access logs.
   transfer.
 - Sign-out/account deletion must remove tokens and generated route/script/audio
   files.
+- Account deletion removes the account and related session records. Submitted
+  questionnaire answers are retained for study integrity with their respondent
+  reference set to `NULL`.
 
 ## Decisions required before production
 

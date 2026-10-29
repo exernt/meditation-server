@@ -44,6 +44,8 @@ EXPECTED_MIGRATED_ROUTES = {
     ("POST", "/auth/admin/researchers/{user_id}/verify"),
     ("POST", "/auth/admin/researchers/{user_id}/reject"),
     ("GET", "/auth/me"),
+    ("PUT", "/auth/me"),
+    ("DELETE", "/auth/me"),
     ("POST", "/studies"),
     ("POST", "/studies/{study_id}/join"),
     ("GET", "/studies"),
