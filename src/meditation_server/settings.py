@@ -105,6 +105,31 @@ def password_reset_link_base() -> str:
     return os.getenv("PASSWORD_RESET_LINK_BASE", "walkingmeditation://password-reset").strip()
 
 
+def response_export_link_base() -> str:
+    value = os.getenv(
+        "RESPONSE_EXPORT_LINK_BASE",
+        "http://localhost:8000/response-exports",
+    ).strip()
+    parsed = urlsplit(value)
+    local = parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1"}
+    if not (local or (parsed.scheme == "https" and parsed.netloc)):
+        raise ValueError("RESPONSE_EXPORT_LINK_BASE must be local HTTP or HTTPS")
+    if not parsed.path.endswith("/response-exports") or parsed.query or parsed.fragment:
+        raise ValueError("RESPONSE_EXPORT_LINK_BASE must end in /response-exports")
+    return value.rstrip("/")
+
+
+def response_export_bucket() -> str:
+    value = os.getenv("RESPONSE_EXPORT_BUCKET", "").strip()
+    if not value:
+        raise ValueError("RESPONSE_EXPORT_BUCKET is not configured")
+    return value
+
+
+def response_export_presigned_ttl_seconds() -> int:
+    return _positive_int("RESPONSE_EXPORT_PRESIGNED_TTL_SECONDS", 300)
+
+
 def android_package_name() -> str:
     return os.getenv("ANDROID_APP_PACKAGE_NAME", "com.example.walking_meditation").strip()
 

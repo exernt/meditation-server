@@ -72,6 +72,11 @@ EXPECTED_MIGRATED_ROUTES = {
     ("POST", "/studies/{study_id}/questionnaires/{study_questionnaire_id}/revoke"),
     ("POST", "/studies/{study_id}/questionnaires/{study_questionnaire_id}/responses"),
     ("GET", "/studies/{study_id}/questionnaires/{study_questionnaire_id}/responses"),
+    ("POST", "/response-exports"),
+    ("POST", "/studies/{study_id}/response-export"),
+    ("GET", "/response-exports/{export_id}"),
+    ("GET", "/response-exports/{export_id}/download"),
+    ("POST", "/response-exports/{export_id}/download"),
     ("POST", "/feedback"),
     ("GET", "/feedback"),
 }

@@ -149,6 +149,7 @@ Configure these variables separately in each environment:
 | `PASSWORD_RESET_FROM_EMAIL` | Verified SES sender |
 | `PASSWORD_RESET_LINK_BASE` | HTTPS API URL ending in `/auth/password-reset/open` |
 | `EMAIL_VERIFICATION_LINK_BASE` | HTTPS API URL ending in `/auth/email-verification/open` |
+| `RESPONSE_EXPORT_LINK_BASE` | HTTPS API URL ending in `/response-exports` |
 | `TTS_PROVIDER` | `polly` or `disabled` |
 
 These values and ARNs are not secret contents. API keys remain in Secrets
@@ -185,7 +186,8 @@ npx cdk deploy WmData-dev --profile wm-admin --require-approval broadening `
   -c openAiSecretArn=OPENAI_SECRET_ARN `
   -c passwordResetFromEmail=VERIFIED_SES_EMAIL `
   -c passwordResetLinkBase=https://example.invalid/auth/password-reset/open `
-  -c emailVerificationLinkBase=https://example.invalid/auth/email-verification/open
+  -c emailVerificationLinkBase=https://example.invalid/auth/email-verification/open `
+  -c responseExportLinkBase=https://example.invalid/response-exports
 ```
 
 Use the `DatabaseApplicationSecretArn` output to retrieve the generated password
@@ -213,12 +215,13 @@ application database password.
 
 ## 9. Run the first OIDC deployment
 
-Set a clearly invalid HTTPS verification link for the first pass, run the
-`Deploy` workflow for `dev`, then record the API Gateway endpoint output. Change
-`EMAIL_VERIFICATION_LINK_BASE` to that endpoint plus
-`/auth/email-verification/open` and rerun the deployment before enabling
-registration. This two-pass configuration avoids a CloudFormation dependency
-cycle.
+Set clearly invalid HTTPS verification and export links for the first pass, run
+the `Deploy` workflow for `dev`, then record the API Gateway endpoint output.
+Change `EMAIL_VERIFICATION_LINK_BASE` to that endpoint plus
+`/auth/email-verification/open`, change `RESPONSE_EXPORT_LINK_BASE` to that
+endpoint plus `/response-exports`, and rerun the deployment before enabling
+registration or exports. This two-pass configuration avoids a CloudFormation
+dependency cycle.
 
 Verify:
 
@@ -226,8 +229,9 @@ Verify:
    AWS access keys in GitHub.
 2. API Gateway account settings in `ap-southeast-2` contain the shared
    CloudWatch logging role ARN.
-3. CloudFormation shows `WmData-dev`, `WmGeneration-dev`, `WmApi-dev`, and
-   `WmOperations-dev` as `CREATE_COMPLETE` or `UPDATE_COMPLETE`.
+3. CloudFormation shows `WmData-dev`, `WmGeneration-dev`, `WmExports-dev`,
+   `WmApi-dev`, and `WmOperations-dev` as `CREATE_COMPLETE` or
+   `UPDATE_COMPLETE`.
 4. RDS shows one Express cluster, Data API enabled, at most 4 ACUs, at most 1 GiB
    storage, one-day backup retention, and no extra reader/cluster.
 5. The API and worker roles have `WM-CdkBoundary`, exact cluster-scoped

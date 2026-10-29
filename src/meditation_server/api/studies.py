@@ -12,6 +12,7 @@ from meditation_server.api.dependencies import (
     VerifiedResearcherDependency,
 )
 from meditation_server.api.models import CreateStudyRequest, EditStudyRequest, JoinStudyRequest, SwapStudyGroupRequest
+from meditation_server.auth.security import generate_respondent_code
 
 
 router = APIRouter(prefix="/studies", tags=["studies"])
@@ -165,10 +166,18 @@ async def join_study(study_id: UUID, payload: JoinStudyRequest, user: CurrentUse
             count = counts.rows[0]
             group = "control" if count["control_count"] <= count["experimental_count"] else "experimental"
             result = await db.execute(
-                """INSERT INTO study_registrations (user_id,study_id,registered_at,consented_at,study_group)
-                   VALUES (:user::uuid,:study::uuid,:now,:now,:group::study_group)
+                """INSERT INTO study_registrations
+                       (user_id,study_id,registered_at,consented_at,study_group,respondent_code)
+                   VALUES (:user::uuid,:study::uuid,:now,:now,:group::study_group,:respondent_code)
                    RETURNING user_id,study_id,registered_at,consented_at,withdrawn_at""",
-                {"user": user.id, "study": study_id, "now": now, "group": group}, transaction=tx,
+                {
+                    "user": user.id,
+                    "study": study_id,
+                    "now": now,
+                    "group": group,
+                    "respondent_code": generate_respondent_code(),
+                },
+                transaction=tx,
             )
     return dict(result.rows[0])
 

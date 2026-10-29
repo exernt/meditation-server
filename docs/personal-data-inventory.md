@@ -8,7 +8,7 @@ owners must decide the lawful basis, wording, retention, and participant rights.
 
 | Category | Fields/examples | Purpose | Primary location |
 | --- | --- | --- | --- |
-| Account identity | Email address, internal user UUID, role, researcher institution, researcher approval status | Authentication and role-based access | Aurora |
+| Account identity | Email address, internal user UUID, role, researcher institution, researcher approval status | Authentication and role-based access; accounts that remain unverified are removed after seven days | Aurora |
 | Authentication security | Argon2 password hash, hashed refresh/reset/verification tokens, session version, failed-login counters, pseudonymous IP/email throttle hashes, security-event timestamps | Sign-in, recovery, abuse prevention, incident investigation | Aurora; short-lived app storage |
 | Demographics | Age and self-described gender | Study demographics and analysis | Aurora |
 | Study membership | Study ID, participant/researcher IDs, group assignment, registration, consent and withdrawal timestamps | Enrolment and study administration | Aurora |
@@ -34,7 +34,8 @@ participant disclosures must not be written to application or API access logs.
 | Google Weather | Location used for current-weather lookup | Account identity | Add weather context |
 | OpenAI | Meditation context, route labels/instructions, terrain, nearby features, weather, duration/word targets, approved study generation parameters | Email, user UUID, auth tokens, raw questionnaire answers and exact coordinates unless a reviewed feature explicitly requires them | Generate narration text |
 | Amazon Polly | Narration text only; initial configuration is `en-AU`, standard engine, `Russell` | Coordinates, email, user UUID, auth tokens, study membership, questionnaire data | Generate MP3 narration |
-| Amazon SES | Recipient email, sender, password-reset or email-verification link and minimal transactional wording | Demographics, location, questionnaire answers | Account verification and recovery |
+| Amazon SES | Recipient email, sender, password-reset, email-verification, or response-export login link and minimal transactional wording | Demographics, location, questionnaire answers, CSV content | Account verification, recovery, and export-ready notification |
+| Amazon S3 response-export bucket | Pseudonymised CSV questionnaire responses, questionnaire metadata, response timestamps, study metadata | Participant UUIDs, email addresses, passwords, access tokens | Temporary researcher export delivery; objects expire after seven days |
 | AWS Aurora/Secrets Manager | Application records and encrypted secrets described above | Raw passwords and raw long-lived tokens | Primary storage and secret custody |
 | AWS CloudWatch/CloudTrail/WAF | Sanitised operational/security metadata; AWS control-plane activity; IP-based security telemetry at the edge | Request bodies, tokens, disclosures and exact route payloads | Operations, audit and abuse prevention |
 

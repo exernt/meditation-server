@@ -15,6 +15,7 @@ from cdk_nag import AwsSolutionsChecks
 from infra.config import EnvironmentConfig
 from infra.stacks.api_stack import ApiStack
 from infra.stacks.data_stack import DataStack
+from infra.stacks.export_stack import ExportStack
 from infra.stacks.generation_stack import GenerationStack
 from infra.stacks.identity_stack import IdentityStack
 from infra.stacks.operations_stack import OperationsStack
@@ -58,21 +59,30 @@ if stage is not None:
         data_stack=data,
         env=environment,
     )
+    exports = ExportStack(
+        app,
+        f"WmExports-{config.stage}",
+        config=config,
+        data_stack=data,
+        env=environment,
+    )
     api = ApiStack(
         app,
         f"WmApi-{config.stage}",
         config=config,
         data_stack=data,
         generation_stack=generation,
+        export_stack=exports,
         env=environment,
     )
     operations = OperationsStack(
         app,
         f"WmOperations-{config.stage}",
         config=config,
+        export_stack=exports,
         env=environment,
     )
-    stacks.extend((data, generation, api, operations))
+    stacks.extend((data, generation, exports, api, operations))
 
 for stack in stacks:
     boundary = iam.ManagedPolicy.from_managed_policy_name(

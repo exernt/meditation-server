@@ -332,6 +332,21 @@ class GenerationStack(Stack):
                 **scheduler_target_options,
             ),
         )
+        scheduler.CfnSchedule(
+            self,
+            "UnverifiedAccountCleanupSchedule",
+            name=f"{config.prefix}-unverified-account-cleanup",
+            description="Delete application accounts left unverified for seven days.",
+            schedule_expression="cron(30 3 * * ? *)",
+            schedule_expression_timezone="Australia/Sydney",
+            flexible_time_window=scheduler.CfnSchedule.FlexibleTimeWindowProperty(mode="OFF"),
+            target=scheduler.CfnSchedule.TargetProperty(
+                arn=self.maintenance.function_arn,
+                role_arn=scheduler_role.role_arn,
+                input=json.dumps({"task": "unverified-account-cleanup"}),
+                **scheduler_target_options,
+            ),
+        )
 
         cloudwatch.Alarm(
             self,

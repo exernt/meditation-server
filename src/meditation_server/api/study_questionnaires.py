@@ -116,7 +116,11 @@ async def revoke(study_id: UUID, study_questionnaire_id: UUID, _owner: StudyOwne
 @router.post("/{study_questionnaire_id}/responses", status_code=201)
 async def submit_response(study_id: UUID, study_questionnaire_id: UUID, payload: SubmitAnswersRequest, user: CurrentUserDependency, db: DatabaseDependency):
     row = await issuance(db, study_id, study_questionnaire_id)
-    registration = await db.execute("SELECT withdrawn_at FROM study_registrations WHERE user_id=:user::uuid AND study_id=:study::uuid", {"user": user.id, "study": study_id})
+    registration = await db.execute(
+        """SELECT withdrawn_at,respondent_code FROM study_registrations
+           WHERE user_id=:user::uuid AND study_id=:study::uuid""",
+        {"user": user.id, "study": study_id},
+    )
     if not registration.rows or registration.rows[0]["withdrawn_at"] is not None:
         raise HTTPException(status_code=403, detail="Only active participants in this study can submit questionnaire responses")
     if row["revoked_at"] is not None:
@@ -134,10 +138,18 @@ async def submit_response(study_id: UUID, study_questionnaire_id: UUID, payload:
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     result = await db.execute(
-        """INSERT INTO questionnaire_responses (id,study_questionnaire_id,respondent_id,answers,submitted_on)
-           VALUES (:id::uuid,:issuance::uuid,:user::uuid,:answers,:now)
+        """INSERT INTO questionnaire_responses
+               (id,study_questionnaire_id,respondent_id,respondent_code,answers,submitted_on)
+           VALUES (:id::uuid,:issuance::uuid,:user::uuid,:respondent_code,:answers,:now)
            RETURNING id,study_questionnaire_id,respondent_id,answers,submitted_on""",
-        {"id": uuid4(), "issuance": study_questionnaire_id, "user": user.id, "answers": payload.answers, "now": datetime.now(UTC)},
+        {
+            "id": uuid4(),
+            "issuance": study_questionnaire_id,
+            "user": user.id,
+            "respondent_code": registration.rows[0]["respondent_code"],
+            "answers": payload.answers,
+            "now": datetime.now(UTC),
+        },
     )
     return dict(result.rows[0])
 

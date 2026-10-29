@@ -26,6 +26,15 @@ generator retained as a safe fallback. Production has not been deployed. See
 [`docs/generation-jobs.md`](docs/generation-jobs.md) for the job contract and
 timing decisions.
 
+Verified researchers can request pseudonymised CSV response exports for one
+owned study with `POST /studies/{study_id}/response-export`, or for all studies
+they own with `POST /response-exports`. Export jobs run through a separate SQS
+worker, are retained in a private S3 bucket for seven days, and notify the
+researcher by email. The emailed browser form rechecks the researcher's
+credentials and export ownership before redirecting to a five-minute S3 URL.
+See [`docs/response-exports.md`](docs/response-exports.md) for the CSV contract
+and delivery flow.
+
 The migrated application is implemented and locally tested in the current
 working tree, but it has not yet been deployed over the verified synthetic
 infrastructure baseline. Live Aurora endpoint tests, live Polly/device playback,

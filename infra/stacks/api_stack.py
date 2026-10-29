@@ -14,6 +14,7 @@ from constructs import Construct
 
 from infra.config import EnvironmentConfig
 from infra.stacks.data_stack import DataStack
+from infra.stacks.export_stack import ExportStack
 from infra.stacks.generation_stack import GenerationStack
 
 
@@ -28,6 +29,7 @@ class ApiStack(Stack):
         config: EnvironmentConfig,
         data_stack: DataStack,
         generation_stack: GenerationStack,
+        export_stack: ExportStack,
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -67,6 +69,14 @@ class ApiStack(Stack):
         )
         data_stack.application_secret.grant_read(api_role)
         generation_stack.queue.grant_send_messages(api_role)
+        export_stack.queue.grant_send_messages(api_role)
+        api_role.add_to_policy(
+            iam.PolicyStatement(
+                sid="DownloadOwnedResponseExports",
+                actions=["s3:GetObject"],
+                resources=[export_stack.bucket.arn_for_objects("response-exports/*")],
+            )
+        )
 
         google_secret = secretsmanager.Secret.from_secret_complete_arn(
             self, "GoogleMapsSecret", config.google_maps_secret_arn
@@ -160,6 +170,10 @@ class ApiStack(Stack):
                 "JWT_SECRET_ARN": jwt_secret.secret_arn,
                 "AUTH_RATE_LIMIT_SECRET_ARN": rate_limit_secret.secret_arn,
                 "GENERATION_QUEUE_URL": generation_stack.queue.queue_url,
+                "RESPONSE_EXPORT_QUEUE_URL": export_stack.queue.queue_url,
+                "RESPONSE_EXPORT_BUCKET": export_stack.bucket.bucket_name,
+                "RESPONSE_EXPORT_LINK_BASE": config.response_export_link_base,
+                "RESPONSE_EXPORT_PRESIGNED_TTL_SECONDS": "300",
                 "EMAIL_BACKEND": "ses",
                 "PASSWORD_RESET_FROM_EMAIL": config.password_reset_from_email,
                 "PASSWORD_RESET_LINK_BASE": config.password_reset_link_base,
@@ -236,8 +250,11 @@ class ApiStack(Stack):
             [
                 {
                     "id": "AwsSolutions-IAM5",
-                    "reason": "SES SendEmail and Polly SynthesizeSpeech do not support resource-level permissions; actions and Region are constrained.",
-                    "appliesTo": ["Resource::*"],
+                    "reason": (
+                        "SES SendEmail and Polly SynthesizeSpeech do not support resource-level "
+                        "permissions; S3 access is limited to GetObject under the dedicated "
+                        "response-exports prefix."
+                    ),
                 }
             ],
             apply_to_children=True,

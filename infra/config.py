@@ -52,6 +52,7 @@ class EnvironmentConfig:
     password_reset_from_email: str
     password_reset_link_base: str
     email_verification_link_base: str
+    response_export_link_base: str
     tts_provider: str
 
     @property
@@ -116,6 +117,20 @@ class EnvironmentConfig:
                 "/auth/email-verification/open with no query or fragment"
             )
 
+        export_link = str(_required(app, "responseExportLinkBase")).strip().rstrip("/")
+        parsed_export_link = urlsplit(export_link)
+        if (
+            parsed_export_link.scheme != "https"
+            or not parsed_export_link.netloc
+            or not parsed_export_link.path.endswith("/response-exports")
+            or parsed_export_link.query
+            or parsed_export_link.fragment
+        ):
+            raise ValueError(
+                "responseExportLinkBase must be an HTTPS URL ending in "
+                "/response-exports with no query or fragment"
+            )
+
         return cls(
             project=str(app.node.try_get_context("project") or "wm").strip(),
             stage=stage,
@@ -134,6 +149,7 @@ class EnvironmentConfig:
             password_reset_from_email=str(_required(app, "passwordResetFromEmail")).strip(),
             password_reset_link_base=password_reset_link,
             email_verification_link_base=verification_link,
+            response_export_link_base=export_link,
             tts_provider=tts_provider,
         )
 

@@ -86,6 +86,11 @@ def generate_token() -> str:
     return secrets.token_urlsafe(32)
 
 
+def generate_respondent_code() -> str:
+    """Return an opaque, study-scoped code suitable for research exports."""
+    return f"P-{secrets.token_hex(16).upper()}"
+
+
 def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 

@@ -108,6 +108,7 @@ erDiagram
     STUDY_REGISTRATIONS {
         uuid user_id PK, FK
         uuid study_id PK, FK
+        text respondent_code UK
         timestamptz registered_at
         timestamptz consented_at
         timestamptz withdrawn_at
@@ -146,8 +147,37 @@ erDiagram
         uuid id PK
         uuid study_questionnaire_id FK
         uuid respondent_id FK
+        text respondent_code
         jsonb answers
         timestamptz submitted_on
+    }
+
+    RESPONSE_EXPORTS {
+        uuid id PK
+        uuid researcher_id FK
+        response_export_scope scope
+        uuid study_id FK
+        response_export_status status
+        bigint source_response_count
+        timestamptz source_last_submitted_on
+        integer attempt_count
+        text lease_token
+        timestamptz lease_expires_at
+        text s3_key
+        text filename
+        timestamptz generated_at
+        timestamptz expires_at
+        timestamptz notification_sent_at
+    }
+
+    RESPONSE_EXPORT_OUTBOX {
+        uuid id PK
+        uuid export_id FK, UK
+        integer attempt_count
+        timestamptz next_attempt_at
+        timestamptz published_at
+        text last_error_code
+        timestamptz created_at
     }
 
     GENERATION_JOBS {
@@ -207,6 +237,10 @@ erDiagram
     QUESTIONNAIRES ||--o{ STUDY_QUESTIONNAIRES : scheduled_as
     STUDY_QUESTIONNAIRES ||--o{ QUESTIONNAIRE_RESPONSES : collects
     USERS o|--o{ QUESTIONNAIRE_RESPONSES : submits
+
+    USERS ||--o{ RESPONSE_EXPORTS : requests
+    STUDY o|--o{ RESPONSE_EXPORTS : limits_scope_to
+    RESPONSE_EXPORTS ||--o| RESPONSE_EXPORT_OUTBOX : publishes_via
 
     USERS ||--o{ GENERATION_JOBS : requests
     GENERATION_JOBS ||--o| GENERATION_OUTBOX : publishes_via

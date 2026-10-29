@@ -167,7 +167,9 @@ MFA.
 Data API transactions use `BeginTransaction`, pass the returned transaction ID
 to each statement, and finish with `CommitTransaction` or `RollbackTransaction`.
 Add a JWT `kid` and support current and previous signing keys during rotation.
-Prune expired token rows with the scheduled maintenance function.
+Prune expired token rows with the scheduled maintenance function. The same
+maintenance Lambda removes accounts that remain unverified for seven days,
+after their 24-hour verification links have expired and can still be resent.
 
 Do not move authentication to Cognito in this phase. It would replace rather
 than simplify the current session work and would not remove application-level

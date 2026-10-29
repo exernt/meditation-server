@@ -3,6 +3,9 @@ from __future__ import annotations
 import asyncio
 import os
 
+from meditation_server.application.account_maintenance import (
+    cleanup_unverified_accounts,
+)
 from meditation_server.application.generation_jobs import cleanup_generation_data
 from meditation_server.application.outbox import (
     OUTBOX_RECOVERY_BATCH_SIZE,
@@ -29,4 +32,6 @@ async def _handle_event(event: dict) -> dict:
         return {"published": result.published, "failed": result.failed}
     if task == "retention-cleanup":
         return await cleanup_generation_data(database)
+    if task == "unverified-account-cleanup":
+        return await cleanup_unverified_accounts(database)
     raise ValueError("Unsupported maintenance task")

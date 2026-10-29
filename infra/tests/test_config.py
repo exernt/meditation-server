@@ -23,6 +23,7 @@ def _app(**values: object) -> cdk.App:
         "emailVerificationLinkBase": (
             "https://api.example.com/auth/email-verification/open"
         ),
+        "responseExportLinkBase": "https://api.example.com/response-exports",
         **values,
     })
 
@@ -75,6 +76,17 @@ def test_accepts_api_gateway_stage_in_password_reset_link() -> None:
     config = EnvironmentConfig.from_app(_app(passwordResetLinkBase=link))
 
     assert config.password_reset_link_base == link
+
+
+def test_accepts_api_gateway_stage_in_response_export_link() -> None:
+    link = (
+        "https://example.execute-api.ap-southeast-2.amazonaws.com/"
+        "dev/response-exports"
+    )
+
+    config = EnvironmentConfig.from_app(_app(responseExportLinkBase=link))
+
+    assert config.response_export_link_base == link
 
 
 @pytest.mark.parametrize(

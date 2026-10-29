@@ -43,4 +43,5 @@ jobs:
           -c passwordResetFromEmail=ci@example.invalid
           -c passwordResetLinkBase=https://api.example.invalid/auth/password-reset/open
           -c emailVerificationLinkBase=https://api.example.invalid/auth/email-verification/open
+          -c responseExportLinkBase=https://api.example.invalid/response-exports
 

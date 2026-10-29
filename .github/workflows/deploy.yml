@@ -63,9 +63,10 @@ jobs:
             -c passwordResetFromEmail=${{ vars.PASSWORD_RESET_FROM_EMAIL }}
             -c passwordResetLinkBase=${{ vars.PASSWORD_RESET_LINK_BASE }}
             -c emailVerificationLinkBase=${{ vars.EMAIL_VERIFICATION_LINK_BASE }}
+            -c responseExportLinkBase=${{ vars.RESPONSE_EXPORT_LINK_BASE }}
             -c ttsProvider=${{ vars.TTS_PROVIDER }}
       - name: Review CloudFormation change set
-        run: npx cdk diff ${{ env.CDK_CONTEXT }} WmData-${{ env.STAGE }} WmGeneration-${{ env.STAGE }} WmApi-${{ env.STAGE }} WmOperations-${{ env.STAGE }}
+        run: npx cdk diff ${{ env.CDK_CONTEXT }} WmData-${{ env.STAGE }} WmGeneration-${{ env.STAGE }} WmExports-${{ env.STAGE }} WmApi-${{ env.STAGE }} WmOperations-${{ env.STAGE }}
         env:
           CDK_CONTEXT: >-
             -c stage=${{ env.STAGE }}
@@ -79,9 +80,10 @@ jobs:
             -c passwordResetFromEmail=${{ vars.PASSWORD_RESET_FROM_EMAIL }}
             -c passwordResetLinkBase=${{ vars.PASSWORD_RESET_LINK_BASE }}
             -c emailVerificationLinkBase=${{ vars.EMAIL_VERIFICATION_LINK_BASE }}
+            -c responseExportLinkBase=${{ vars.RESPONSE_EXPORT_LINK_BASE }}
             -c ttsProvider=${{ vars.TTS_PROVIDER }}
       - name: Deploy approved stacks
-        run: npx cdk deploy --require-approval never ${{ env.CDK_CONTEXT }} WmData-${{ env.STAGE }} WmGeneration-${{ env.STAGE }} WmApi-${{ env.STAGE }} WmOperations-${{ env.STAGE }}
+        run: npx cdk deploy --require-approval never ${{ env.CDK_CONTEXT }} WmData-${{ env.STAGE }} WmGeneration-${{ env.STAGE }} WmExports-${{ env.STAGE }} WmApi-${{ env.STAGE }} WmOperations-${{ env.STAGE }}
         env:
           CDK_CONTEXT: >-
             -c stage=${{ env.STAGE }}
@@ -95,5 +97,6 @@ jobs:
             -c passwordResetFromEmail=${{ vars.PASSWORD_RESET_FROM_EMAIL }}
             -c passwordResetLinkBase=${{ vars.PASSWORD_RESET_LINK_BASE }}
             -c emailVerificationLinkBase=${{ vars.EMAIL_VERIFICATION_LINK_BASE }}
+            -c responseExportLinkBase=${{ vars.RESPONSE_EXPORT_LINK_BASE }}
             -c ttsProvider=${{ vars.TTS_PROVIDER }}
 

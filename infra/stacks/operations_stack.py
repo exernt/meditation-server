@@ -11,12 +11,13 @@ from cdk_nag import NagSuppressions
 from constructs import Construct
 
 from infra.config import EnvironmentConfig
+from infra.stacks.export_stack import ExportStack
 
 
 class OperationsStack(Stack):
     """Budget alerts and durable management-event audit trail."""
 
-    def __init__(self, scope: Construct, construct_id: str, *, config: EnvironmentConfig, **kwargs) -> None:
+    def __init__(self, scope: Construct, construct_id: str, *, config: EnvironmentConfig, export_stack: ExportStack, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
         alerts = sns.Topic(self, "CostAlerts", topic_name=f"{config.prefix}-cost-alerts")
@@ -103,7 +104,7 @@ class OperationsStack(Stack):
             ],
             apply_to_children=False,
         )
-        cloudtrail.Trail(
+        trail = cloudtrail.Trail(
             self,
             "ManagementTrail",
             trail_name=f"{config.prefix}-management",
@@ -113,5 +114,14 @@ class OperationsStack(Stack):
             enable_file_validation=True,
             management_events=cloudtrail.ReadWriteType.ALL,
             send_to_cloud_watch_logs=False,
+        )
+        trail.add_s3_event_selector(
+            [
+                cloudtrail.S3EventSelector(
+                    bucket=export_stack.bucket,
+                    object_prefix="response-exports/",
+                )
+            ],
+            read_write_type=cloudtrail.ReadWriteType.ALL,
         )
 

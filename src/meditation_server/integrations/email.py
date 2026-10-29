@@ -39,9 +39,29 @@ async def _send(to_address: str, subject: str, body: str) -> None:
 
 async def send_verification(to_address: str, token: str) -> None:
     link = f"{settings.email_verification_link_base()}#token={quote(token, safe='')}"
-    await _send(to_address, "Verify your Walking Meditation email", f"Verify your email: {link}")
+    await _send(
+        to_address,
+        "Verify your Walking Meditation email",
+        (
+            f"Verify your email: {link}\n\n"
+            "The verification link expires after 24 hours, and unverified "
+            "accounts are removed after 7 days."
+        ),
+    )
 
 
 async def send_password_reset(to_address: str, token: str) -> None:
     link = f"{settings.password_reset_link_base()}#token={quote(token, safe='')}"
     await _send(to_address, "Reset your Walking Meditation password", f"Reset your password: {link}")
+
+
+async def send_response_export_ready(to_address: str, export_id: str) -> None:
+    link = f"{settings.response_export_link_base()}/{quote(export_id, safe='')}/download"
+    await _send(
+        to_address,
+        "Your Walking Meditation response export is ready",
+        (
+            "Your CSV response export is ready. Sign in to download it within "
+            f"seven days: {link}"
+        ),
+    )

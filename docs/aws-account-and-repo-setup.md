@@ -627,7 +627,7 @@ speculatively now.
 Verified on 2026-10-24 against deployed commit `4680040`:
 
 - the `dev` deployment workflow completed with GitHub OIDC credentials;
-- `WmData-dev`, `WmGeneration-dev`, `WmApi-dev`, and `WmOperations-dev` deploy
+- `WmData-dev`, `WmGeneration-dev`, `WmExports-dev`, `WmApi-dev`, and `WmOperations-dev` deploy
   as separate environment stacks;
 - the Aurora writer uses `db.serverless`, exposes the expected Serverless v2
   scaling configuration, and was created with Express Configuration;

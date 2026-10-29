@@ -32,6 +32,7 @@ def test_generation_stack_has_worker_maintenance_and_schedules(monkeypatch) -> N
         "emailVerificationLinkBase": (
             "https://api.example.com/auth/email-verification/open"
         ),
+        "responseExportLinkBase": "https://api.example.com/response-exports",
     })
     config = EnvironmentConfig.from_app(app)
     monkeypatch.setattr(
@@ -46,7 +47,7 @@ def test_generation_stack_has_worker_maintenance_and_schedules(monkeypatch) -> N
     template.resource_count_is("AWS::SQS::Queue", 3)
     # Worker, maintenance, and the dev bucket's auto-delete custom resource.
     template.resource_count_is("AWS::Lambda::Function", 3)
-    template.resource_count_is("AWS::Scheduler::Schedule", 2)
+    template.resource_count_is("AWS::Scheduler::Schedule", 3)
     template.resource_count_is("AWS::S3::Bucket", 1)
     template.has_resource_properties(
         "AWS::S3::Bucket",
@@ -86,6 +87,17 @@ def test_generation_stack_has_worker_maintenance_and_schedules(monkeypatch) -> N
         {
             "ScheduleExpression": "rate(1 minute)",
             "FlexibleTimeWindow": {"Mode": "OFF"},
+        },
+    )
+    template.has_resource_properties(
+        "AWS::Scheduler::Schedule",
+        {
+            "ScheduleExpression": "cron(30 3 * * ? *)",
+            "ScheduleExpressionTimezone": "Australia/Sydney",
+            "FlexibleTimeWindow": {"Mode": "OFF"},
+            "Target": assertions.Match.object_like(
+                {"Input": '{"task": "unverified-account-cleanup"}'}
+            ),
         },
     )
     template.has_resource_properties(

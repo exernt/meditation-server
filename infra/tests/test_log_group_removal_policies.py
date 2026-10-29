@@ -8,6 +8,7 @@ from aws_cdk import aws_lambda as lambda_
 from infra.config import EnvironmentConfig
 from infra.stacks.api_stack import ApiStack
 from infra.stacks.data_stack import DataStack
+from infra.stacks.export_stack import ExportStack
 from infra.stacks.generation_stack import GenerationStack
 
 
@@ -41,6 +42,7 @@ def _synthesized_log_groups(
             "emailVerificationLinkBase": (
                 "https://api.example.com/auth/email-verification/open"
             ),
+            "responseExportLinkBase": "https://api.example.com/response-exports",
         }
     )
     config = EnvironmentConfig.from_app(app)
@@ -60,16 +62,23 @@ def _synthesized_log_groups(
         config=config,
         data_stack=data,
     )
+    exports = ExportStack(
+        app,
+        f"Exports-{stage}",
+        config=config,
+        data_stack=data,
+    )
     api = ApiStack(
         app,
         f"Api-{stage}",
         config=config,
         data_stack=data,
         generation_stack=generation,
+        export_stack=exports,
     )
 
     log_groups: list[dict[str, object]] = []
-    for stack in (generation, api):
+    for stack in (generation, exports, api):
         resources = assertions.Template.from_stack(stack).to_json()["Resources"]
         log_groups.extend(
             resource
@@ -90,7 +99,7 @@ def test_log_groups_follow_environment_removal_policy(
 ) -> None:
     log_groups = _synthesized_log_groups(monkeypatch, stage)
 
-    assert len(log_groups) == 4
+    assert len(log_groups) == 6
     assert {resource["DeletionPolicy"] for resource in log_groups} == {
         expected_policy
     }

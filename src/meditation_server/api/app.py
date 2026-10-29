@@ -8,7 +8,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from meditation_server import settings
-from meditation_server.api import auth, feedback, generation_jobs, questionnaires, studies, study_questionnaires
+from meditation_server.api import auth, feedback, generation_jobs, questionnaires, response_exports, studies, study_questionnaires
 from meditation_server.api.dependencies import CurrentUserDependency, DatabaseDependency, create_executor
 from meditation_server.api.models import ScriptWithParkRequest, ScriptWithoutParkRequest, TtsRequest, WalkRouteRequest
 from meditation_server.integrations.maps import generate_walk_route
@@ -36,6 +36,7 @@ app.include_router(auth.router)
 app.include_router(studies.router)
 app.include_router(questionnaires.router)
 app.include_router(study_questionnaires.router)
+app.include_router(response_exports.router)
 app.include_router(feedback.router)
 app.include_router(generation_jobs.router)
 
@@ -44,7 +45,7 @@ app.include_router(generation_jobs.router)
 async def security_headers(request, call_next):
     response = await call_next(request)
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
-    if request.url.path.startswith(("/auth", "/studies", "/questionnaires", "/feedback", "/route", "/tts", "/v1")):
+    if request.url.path.startswith(("/auth", "/studies", "/questionnaires", "/response-exports", "/feedback", "/route", "/tts", "/v1")):
         response.headers["Cache-Control"] = "no-store"
     return response
 
