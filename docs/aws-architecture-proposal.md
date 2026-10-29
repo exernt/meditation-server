@@ -149,7 +149,9 @@ Keep the strengthened custom session design:
 - a unique parent link and family-wide revocation on replay;
 - `SELECT ... FOR UPDATE` within a Data API transaction for refresh, password
   reset, and token-family changes;
-- `session_version` invalidation after password reset; and
+- `session_version` invalidation after password reset and each successful login,
+  with existing refresh tokens revoked so only the newest device remains signed
+  in; and
 - Android Keystore encryption with session storage excluded from backup and
   device transfer.
 

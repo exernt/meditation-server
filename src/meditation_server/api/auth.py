@@ -277,6 +277,19 @@ async def login(request: Request, payload: LoginRequest, db: DatabaseDependency)
             raise HTTPException(status_code=403, detail="Email verification is required")
         if password_needs_rehash(user["password_hash"]):
             await db.execute("UPDATE users SET password_hash=:hash WHERE id=:id::uuid", {"hash": await hash_password(payload.password), "id": user["id"]}, transaction=tx)
+        session = await db.execute(
+            """UPDATE users SET session_version=session_version+1
+               WHERE id=:id::uuid RETURNING session_version""",
+            {"id": user["id"]},
+            transaction=tx,
+        )
+        session_version = session.rows[0]["session_version"]
+        await db.execute(
+            """UPDATE refresh_tokens SET revoked_at=now()
+               WHERE user_id=:id::uuid AND revoked_at IS NULL""",
+            {"id": user["id"]},
+            transaction=tx,
+        )
         raw_refresh = generate_token()
         await db.execute(
             """INSERT INTO refresh_tokens (user_id,family_id,token_hash,expires_at)
@@ -293,7 +306,7 @@ async def login(request: Request, payload: LoginRequest, db: DatabaseDependency)
     except BaseException:
         await db.rollback(tx)
         raise
-    return {"access_token": create_access_token(user["id"], user["session_version"], admin=user["role"] == "admin"), "refresh_token": raw_refresh, "token_type": "bearer"}
+    return {"access_token": create_access_token(user["id"], session_version, admin=user["role"] == "admin"), "refresh_token": raw_refresh, "token_type": "bearer"}
 
 
 @router.post("/logout")

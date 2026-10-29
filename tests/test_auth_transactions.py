@@ -10,6 +10,7 @@ from starlette.requests import Request
 
 from meditation_server.api import auth
 from meditation_server.api.models import LoginRequest, TokenRequest
+from meditation_server.auth.security import decode_access_token
 from meditation_server.repositories.executor import DatabaseExecutor, QueryResult, Transaction
 
 
@@ -66,6 +67,51 @@ def test_unknown_user_failure_commits_throttle_and_audit(monkeypatch) -> None:
     assert database.commits == 1
     assert database.rollbacks == 0
     assert any("INSERT INTO security_events" in sql for sql in database.statements)
+
+
+def test_successful_login_replaces_existing_session(monkeypatch) -> None:
+    monkeypatch.setenv("AUTH_RATE_LIMIT_PEPPER", "test-pepper")
+    monkeypatch.setenv("JWT_SECRET_KEY", "a" * 64)
+    monkeypatch.setenv("JWT_KEY_ID", "current-test")
+    monkeypatch.setattr(auth, "verify_password", AsyncMock(return_value=True))
+    monkeypatch.setattr(auth, "password_needs_rehash", lambda _password_hash: False)
+    user_id = uuid4()
+
+    def respond(sql, _parameters):
+        if "FROM login_throttles" in sql:
+            return QueryResult()
+        if "FROM users WHERE email" in sql:
+            return QueryResult(rows=({
+                "id": user_id,
+                "email": "person@example.com",
+                "password_hash": "password-hash",
+                "session_version": 4,
+                "role": "participant",
+                "email_verified": True,
+                "disabled_at": None,
+            },))
+        if "UPDATE users SET session_version=session_version+1" in sql:
+            return QueryResult(rows=({"session_version": 5},))
+        return QueryResult()
+
+    database = ScriptedExecutor(respond)
+    request = Request({"type": "http", "method": "POST", "path": "/auth/login", "headers": [], "client": ("203.0.113.10", 1234)})
+
+    response = asyncio.run(auth.login(
+        request,
+        LoginRequest(email="person@example.com", password="correct-password"),
+        database,
+    ))
+
+    assert decode_access_token(response["access_token"]) == (user_id, 5)
+    assert database.commits == 1
+    assert database.rollbacks == 0
+    statements = database.statements
+    version_index = next(i for i, sql in enumerate(statements) if "UPDATE users SET session_version=session_version+1" in sql)
+    revoke_index = next(i for i, sql in enumerate(statements) if "UPDATE refresh_tokens SET revoked_at=now()" in sql)
+    insert_index = next(i for i, sql in enumerate(statements) if "INSERT INTO refresh_tokens" in sql)
+    assert version_index < revoke_index < insert_index
+    assert any("login_succeeded" in str(sql) or "INSERT INTO security_events" in sql for sql in statements)
 
 
 def test_refresh_replay_commits_family_revocation_before_401() -> None:
