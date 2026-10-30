@@ -90,7 +90,8 @@ erDiagram
         text name
         integer duration
         text description
-        text script_generation_parameters
+        text control_script_generation_parameters
+        text experimental_script_generation_parameters
         study_status status
         timestamptz activated_at
     }

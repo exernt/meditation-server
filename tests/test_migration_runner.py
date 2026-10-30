@@ -55,7 +55,7 @@ class MigrationLoadingTests(unittest.TestCase):
         migrations = load_migrations(directory)
         self.assertEqual(
             [migration.version for migration in migrations],
-            ["0001", "0002", "0003", "0004", "0005", "0006"],
+            ["0001", "0002", "0003", "0004", "0005", "0006", "0007"],
         )
         self.assertGreater(len(migrations[0].statements), 20)
         self.assertGreater(len(migrations[1].statements), 5)

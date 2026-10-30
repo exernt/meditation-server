@@ -7,8 +7,8 @@ from uuid import uuid4
 from fastapi import HTTPException
 
 from meditation_server.api.dependencies import CurrentUser
-from meditation_server.api.models import IssueQuestionnaireRequest
-from meditation_server.api.studies import activate, current_script_parameters
+from meditation_server.api.models import EditStudyRequest, IssueQuestionnaireRequest
+from meditation_server.api.studies import activate, current_script_parameters, edit_study
 from meditation_server.api.study_questionnaires import issue
 from meditation_server.repositories.executor import DatabaseExecutor, QueryResult, Transaction
 
@@ -213,6 +213,7 @@ def test_current_script_parameters_ignore_recruiting_enrolments() -> None:
         "participating": False,
         "study_id": None,
         "study_status": None,
+        "study_group": None,
         "script_generation_parameters": "",
     }
     assert len(database.statements) == 1
@@ -220,7 +221,7 @@ def test_current_script_parameters_ignore_recruiting_enrolments() -> None:
     assert "'recruiting'::study_status" not in database.statements[0]
 
 
-def test_current_script_parameters_return_active_study_configuration() -> None:
+def test_current_script_parameters_return_active_study_group_configuration() -> None:
     participant = CurrentUser(
         id=uuid4(),
         email="participant@example.com",
@@ -233,7 +234,8 @@ def test_current_script_parameters_return_active_study_configuration() -> None:
     database = ScriptedExecutor(lambda _sql, _parameters: QueryResult(rows=({
         "study_id": study_id,
         "study_status": "active",
-        "script_generation_parameters": "Use a body scan.",
+        "study_group": "experimental",
+        "script_generation_parameters": "Use a gratitude practice.",
     },)))
 
     response = asyncio.run(current_script_parameters(participant, database))
@@ -242,8 +244,43 @@ def test_current_script_parameters_return_active_study_configuration() -> None:
         "participating": True,
         "study_id": study_id,
         "study_status": "active",
-        "script_generation_parameters": "Use a body scan.",
+        "study_group": "experimental",
+        "script_generation_parameters": "Use a gratitude practice.",
     }
+    assert "CASE sr.study_group" in database.statements[0]
+    assert "s.control_script_generation_parameters" in database.statements[0]
+    assert "s.experimental_script_generation_parameters" in database.statements[0]
+
+
+def test_researcher_can_edit_one_groups_script_parameters() -> None:
+    owner = researcher()
+    study_id = uuid4()
+
+    def respond(sql, parameters):
+        assert "UPDATE study SET experimental_script_generation_parameters=:value" in sql
+        assert parameters["value"] == "Use a gratitude practice."
+        return QueryResult(rows=({
+            "id": study_id,
+            "name": "Walking study",
+            "duration": 14,
+            "description": "",
+            "status": "draft",
+            "control_script_generation_parameters": "Use a body scan.",
+            "experimental_script_generation_parameters": parameters["value"],
+        },))
+
+    response = asyncio.run(edit_study(
+        study_id,
+        EditStudyRequest(
+            column="experimental_script_generation_parameters",
+            value="  Use a gratitude practice.  ",
+        ),
+        owner,
+        ScriptedExecutor(respond),
+    ))
+
+    assert response["control_script_generation_parameters"] == "Use a body scan."
+    assert response["experimental_script_generation_parameters"] == "Use a gratitude practice."
 
 
 def test_activating_study_records_countdown_start_time() -> None:
@@ -258,7 +295,8 @@ def test_activating_study_records_countdown_start_time() -> None:
                 "duration": 14,
                 "description": "",
                 "status": "recruiting",
-                "script_generation_parameters": "Use a body scan.",
+                "control_script_generation_parameters": "Use a body scan.",
+                "experimental_script_generation_parameters": "Use a gratitude practice.",
             },))
         if sql.startswith("UPDATE study SET"):
             return QueryResult(rows=({
@@ -267,7 +305,8 @@ def test_activating_study_records_countdown_start_time() -> None:
                 "duration": 14,
                 "description": "",
                 "status": "active",
-                "script_generation_parameters": "Use a body scan.",
+                "control_script_generation_parameters": "Use a body scan.",
+                "experimental_script_generation_parameters": "Use a gratitude practice.",
             },))
         raise AssertionError(f"Unexpected SQL: {sql}")
 

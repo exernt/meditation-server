@@ -23,14 +23,16 @@ def study_response(row):
     return {
         "id": row["id"], "name": row["name"], "duration": row["duration"],
         "description": row.get("description") or "", "status": row["status"],
-        "script_generation_parameters": row.get("script_generation_parameters") or "",
+        "control_script_generation_parameters": row.get("control_script_generation_parameters") or "",
+        "experimental_script_generation_parameters": row.get("experimental_script_generation_parameters") or "",
     }
 
 
 async def get_study_row(db, study_id: UUID, *, transaction=None, lock=False):
     suffix = " FOR UPDATE" if lock else ""
     result = await db.execute(
-        """SELECT id,name,duration,description,status::text AS status,script_generation_parameters
+        """SELECT id,name,duration,description,status::text AS status,
+                  control_script_generation_parameters,experimental_script_generation_parameters
            FROM study WHERE id=:id::uuid""" + suffix,
         {"id": study_id}, transaction=transaction,
     )
@@ -45,7 +47,8 @@ async def create_study(payload: CreateStudyRequest, researcher: VerifiedResearch
     async with db.transaction() as tx:
         result = await db.execute(
             """INSERT INTO study (id,name,duration) VALUES (:id::uuid,:name,:duration)
-               RETURNING id,name,duration,description,status::text AS status,script_generation_parameters""",
+               RETURNING id,name,duration,description,status::text AS status,
+                         control_script_generation_parameters,experimental_script_generation_parameters""",
             {"id": study_id, "name": payload.name, "duration": payload.duration}, transaction=tx,
         )
         await db.execute("INSERT INTO study_created_by (researcher_id,study_id) VALUES (:user::uuid,:study::uuid)", {"user": researcher.id, "study": study_id}, transaction=tx)
@@ -75,7 +78,9 @@ async def list_studies(
         parameters["status"] = status_filter
     where = " WHERE " + " AND ".join(clauses) if clauses else ""
     result = await db.execute(
-        "SELECT s.id,s.name,s.duration,s.description,s.status::text AS status,s.script_generation_parameters FROM study s" + join + where,
+        """SELECT s.id,s.name,s.duration,s.description,s.status::text AS status,
+                  s.control_script_generation_parameters,s.experimental_script_generation_parameters
+             FROM study s""" + join + where,
         parameters,
     )
     return {"studies": [study_response(row) for row in result.rows]}
@@ -110,7 +115,12 @@ async def my_studies(user: CurrentUserDependency, db: DatabaseDependency):
 @router.get("/current-script-parameters")
 async def current_script_parameters(user: CurrentUserDependency, db: DatabaseDependency):
     result = await db.execute(
-        """SELECT s.id AS study_id,s.status::text AS study_status,s.script_generation_parameters
+        """SELECT s.id AS study_id,s.status::text AS study_status,
+                  sr.study_group::text AS study_group,
+                  CASE sr.study_group
+                      WHEN 'control'::study_group THEN s.control_script_generation_parameters
+                      WHEN 'experimental'::study_group THEN s.experimental_script_generation_parameters
+                  END AS script_generation_parameters
            FROM study_registrations sr JOIN study s ON s.id=sr.study_id
            WHERE sr.user_id=:user::uuid AND sr.withdrawn_at IS NULL
              AND s.status='active'::study_status
@@ -118,7 +128,13 @@ async def current_script_parameters(user: CurrentUserDependency, db: DatabaseDep
         {"user": user.id},
     )
     if not result.rows:
-        return {"participating": False, "study_id": None, "study_status": None, "script_generation_parameters": ""}
+        return {
+            "participating": False,
+            "study_id": None,
+            "study_status": None,
+            "study_group": None,
+            "script_generation_parameters": "",
+        }
     row = result.rows[0]
     return {"participating": True, **dict(row), "script_generation_parameters": row["script_generation_parameters"] or ""}
 
@@ -214,8 +230,12 @@ async def swap_group(study_id: UUID, payload: SwapStudyGroupRequest, _owner: Stu
 
 @router.post("/{study_id}/edit")
 async def edit_study(study_id: UUID, payload: EditStudyRequest, _owner: StudyOwnerDependency, db: DatabaseDependency):
-    existing_columns = {"id", "name", "duration", "description", "script_generation_parameters", "status"}
-    editable = {"name": str, "duration": int, "description": str, "script_generation_parameters": str}
+    parameter_columns = {
+        "control_script_generation_parameters",
+        "experimental_script_generation_parameters",
+    }
+    existing_columns = {"id", "name", "duration", "description", "status", *parameter_columns}
+    editable = {"name": str, "duration": int, "description": str, **{column: str for column in parameter_columns}}
     if payload.column not in existing_columns:
         raise HTTPException(status_code=400, detail=f"Study column '{payload.column}' does not exist")
     expected = editable.get(payload.column)
@@ -228,7 +248,7 @@ async def edit_study(study_id: UUID, payload: EditStudyRequest, _owner: StudyOwn
         value = value.strip()
         if not value or len(value) > 255:
             raise HTTPException(status_code=422, detail="Study name must contain between 1 and 255 characters")
-    elif payload.column in {"description", "script_generation_parameters"}:
+    elif payload.column == "description" or payload.column in parameter_columns:
         value = value.strip()
         if len(value) > 10000:
             label = "description" if payload.column == "description" else "script generation parameters"
@@ -238,7 +258,8 @@ async def edit_study(study_id: UUID, payload: EditStudyRequest, _owner: StudyOwn
     # Column names come exclusively from the allow-list above.
     result = await db.execute(
         f"""UPDATE study SET {payload.column}=:value WHERE id=:id::uuid
-            RETURNING id,name,duration,description,status::text AS status,script_generation_parameters""",
+            RETURNING id,name,duration,description,status::text AS status,
+                      control_script_generation_parameters,experimental_script_generation_parameters""",
         {"value": value, "id": study_id},
     )
     return study_response(result.rows[0])
@@ -252,7 +273,8 @@ async def transition(db, study_id: UUID, current: set[str], target: str):
         activation_assignment = ",activated_at=now()" if target == "active" else ""
         result = await db.execute(
             """UPDATE study SET status=:target::study_status""" + activation_assignment + """ WHERE id=:id::uuid
-               RETURNING id,name,duration,description,status::text AS status,script_generation_parameters""",
+               RETURNING id,name,duration,description,status::text AS status,
+                         control_script_generation_parameters,experimental_script_generation_parameters""",
             {"target": target, "id": study_id}, transaction=tx,
         )
     return study_response(result.rows[0])
