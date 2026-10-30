@@ -33,7 +33,7 @@ participant disclosures must not be written to application or API access logs.
 | Google Elevation | Route points/polyline coordinates | Account identity | Classify route elevation |
 | Google Weather | Location used for current-weather lookup | Account identity | Add weather context |
 | OpenAI | Meditation context, route labels/instructions, terrain, nearby features, weather, duration/word targets, approved study generation parameters | Email, user UUID, auth tokens, raw questionnaire answers and exact coordinates unless a reviewed feature explicitly requires them | Generate narration text |
-| Amazon Polly | Narration text only; initial configuration is `en-AU`, standard engine, `Russell` | Coordinates, email, user UUID, auth tokens, study membership, questionnaire data | Generate MP3 narration |
+| Amazon Polly | Narration text only; `en-AU`, standard engine, and the selected `Russell` or `Nicole` voice | Coordinates, email, user UUID, auth tokens, study membership, questionnaire data | Generate MP3 narration |
 | Amazon SES | Recipient email, sender, password-reset, email-verification, or response-export login link and minimal transactional wording | Demographics, location, questionnaire answers, CSV content | Account verification, recovery, and export-ready notification |
 | Amazon S3 response-export bucket | Pseudonymised CSV questionnaire responses, questionnaire metadata, response timestamps, study metadata | Participant UUIDs, email addresses, passwords, access tokens | Temporary researcher export delivery; objects expire after seven days |
 | AWS Aurora/Secrets Manager | Application records and encrypted secrets described above | Raw passwords and raw long-lived tokens | Primary storage and secret custody |

@@ -215,6 +215,7 @@ def test_current_script_parameters_ignore_recruiting_enrolments() -> None:
         "study_status": None,
         "study_group": None,
         "script_generation_parameters": "",
+        "tts_voice": "male",
     }
     assert len(database.statements) == 1
     assert "s.status='active'::study_status" in database.statements[0]
@@ -236,6 +237,7 @@ def test_current_script_parameters_return_active_study_group_configuration() -> 
         "study_status": "active",
         "study_group": "experimental",
         "script_generation_parameters": "Use a gratitude practice.",
+        "tts_voice": "female",
     },)))
 
     response = asyncio.run(current_script_parameters(participant, database))
@@ -246,10 +248,13 @@ def test_current_script_parameters_return_active_study_group_configuration() -> 
         "study_status": "active",
         "study_group": "experimental",
         "script_generation_parameters": "Use a gratitude practice.",
+        "tts_voice": "female",
     }
     assert "CASE sr.study_group" in database.statements[0]
     assert "s.control_script_generation_parameters" in database.statements[0]
     assert "s.experimental_script_generation_parameters" in database.statements[0]
+    assert "s.control_tts_voice" in database.statements[0]
+    assert "s.experimental_tts_voice" in database.statements[0]
 
 
 def test_researcher_can_edit_one_groups_script_parameters() -> None:
@@ -281,6 +286,36 @@ def test_researcher_can_edit_one_groups_script_parameters() -> None:
 
     assert response["control_script_generation_parameters"] == "Use a body scan."
     assert response["experimental_script_generation_parameters"] == "Use a gratitude practice."
+
+
+def test_researcher_can_select_one_groups_tts_voice() -> None:
+    owner = researcher()
+    study_id = uuid4()
+
+    def respond(sql, parameters):
+        assert "UPDATE study SET control_tts_voice=:value::study_tts_voice" in sql
+        assert parameters["value"] == "female"
+        return QueryResult(rows=({
+            "id": study_id,
+            "name": "Walking study",
+            "duration": 14,
+            "description": "",
+            "status": "draft",
+            "control_script_generation_parameters": "",
+            "experimental_script_generation_parameters": "",
+            "control_tts_voice": parameters["value"],
+            "experimental_tts_voice": "male",
+        },))
+
+    response = asyncio.run(edit_study(
+        study_id,
+        EditStudyRequest(column="control_tts_voice", value=" Female "),
+        owner,
+        ScriptedExecutor(respond),
+    ))
+
+    assert response["control_tts_voice"] == "female"
+    assert response["experimental_tts_voice"] == "male"
 
 
 def test_activating_study_records_countdown_start_time() -> None:

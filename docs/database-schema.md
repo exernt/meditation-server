@@ -92,6 +92,8 @@ erDiagram
         text description
         text control_script_generation_parameters
         text experimental_script_generation_parameters
+        study_tts_voice control_tts_voice
+        study_tts_voice experimental_tts_voice
         study_status status
         timestamptz activated_at
     }

@@ -25,6 +25,8 @@ def study_response(row):
         "description": row.get("description") or "", "status": row["status"],
         "control_script_generation_parameters": row.get("control_script_generation_parameters") or "",
         "experimental_script_generation_parameters": row.get("experimental_script_generation_parameters") or "",
+        "control_tts_voice": row.get("control_tts_voice") or "male",
+        "experimental_tts_voice": row.get("experimental_tts_voice") or "male",
     }
 
 
@@ -32,7 +34,9 @@ async def get_study_row(db, study_id: UUID, *, transaction=None, lock=False):
     suffix = " FOR UPDATE" if lock else ""
     result = await db.execute(
         """SELECT id,name,duration,description,status::text AS status,
-                  control_script_generation_parameters,experimental_script_generation_parameters
+                  control_script_generation_parameters,experimental_script_generation_parameters,
+                  control_tts_voice::text AS control_tts_voice,
+                  experimental_tts_voice::text AS experimental_tts_voice
            FROM study WHERE id=:id::uuid""" + suffix,
         {"id": study_id}, transaction=transaction,
     )
@@ -48,7 +52,9 @@ async def create_study(payload: CreateStudyRequest, researcher: VerifiedResearch
         result = await db.execute(
             """INSERT INTO study (id,name,duration) VALUES (:id::uuid,:name,:duration)
                RETURNING id,name,duration,description,status::text AS status,
-                         control_script_generation_parameters,experimental_script_generation_parameters""",
+                         control_script_generation_parameters,experimental_script_generation_parameters,
+                         control_tts_voice::text AS control_tts_voice,
+                         experimental_tts_voice::text AS experimental_tts_voice""",
             {"id": study_id, "name": payload.name, "duration": payload.duration}, transaction=tx,
         )
         await db.execute("INSERT INTO study_created_by (researcher_id,study_id) VALUES (:user::uuid,:study::uuid)", {"user": researcher.id, "study": study_id}, transaction=tx)
@@ -79,7 +85,9 @@ async def list_studies(
     where = " WHERE " + " AND ".join(clauses) if clauses else ""
     result = await db.execute(
         """SELECT s.id,s.name,s.duration,s.description,s.status::text AS status,
-                  s.control_script_generation_parameters,s.experimental_script_generation_parameters
+                  s.control_script_generation_parameters,s.experimental_script_generation_parameters,
+                  s.control_tts_voice::text AS control_tts_voice,
+                  s.experimental_tts_voice::text AS experimental_tts_voice
              FROM study s""" + join + where,
         parameters,
     )
@@ -112,30 +120,44 @@ async def my_studies(user: CurrentUserDependency, db: DatabaseDependency):
     return {"studies": studies}
 
 
-@router.get("/current-script-parameters")
-async def current_script_parameters(user: CurrentUserDependency, db: DatabaseDependency):
+async def get_current_study_configuration(db, user_id: UUID):
     result = await db.execute(
         """SELECT s.id AS study_id,s.status::text AS study_status,
                   sr.study_group::text AS study_group,
                   CASE sr.study_group
                       WHEN 'control'::study_group THEN s.control_script_generation_parameters
                       WHEN 'experimental'::study_group THEN s.experimental_script_generation_parameters
-                  END AS script_generation_parameters
+                  END AS script_generation_parameters,
+                  (CASE sr.study_group
+                      WHEN 'control'::study_group THEN s.control_tts_voice
+                      WHEN 'experimental'::study_group THEN s.experimental_tts_voice
+                  END)::text AS tts_voice
            FROM study_registrations sr JOIN study s ON s.id=sr.study_id
            WHERE sr.user_id=:user::uuid AND sr.withdrawn_at IS NULL
              AND s.status='active'::study_status
            ORDER BY sr.registered_at DESC LIMIT 1""",
-        {"user": user.id},
+        {"user": user_id},
     )
-    if not result.rows:
+    return result.rows[0] if result.rows else None
+
+
+async def resolve_current_tts_voice(db, user_id: UUID) -> str:
+    row = await get_current_study_configuration(db, user_id)
+    return (row["tts_voice"] or "male") if row is not None else "male"
+
+
+@router.get("/current-script-parameters")
+async def current_script_parameters(user: CurrentUserDependency, db: DatabaseDependency):
+    row = await get_current_study_configuration(db, user.id)
+    if row is None:
         return {
             "participating": False,
             "study_id": None,
             "study_status": None,
             "study_group": None,
             "script_generation_parameters": "",
+            "tts_voice": "male",
         }
-    row = result.rows[0]
     return {"participating": True, **dict(row), "script_generation_parameters": row["script_generation_parameters"] or ""}
 
 
@@ -234,8 +256,14 @@ async def edit_study(study_id: UUID, payload: EditStudyRequest, _owner: StudyOwn
         "control_script_generation_parameters",
         "experimental_script_generation_parameters",
     }
-    existing_columns = {"id", "name", "duration", "description", "status", *parameter_columns}
-    editable = {"name": str, "duration": int, "description": str, **{column: str for column in parameter_columns}}
+    voice_columns = {"control_tts_voice", "experimental_tts_voice"}
+    existing_columns = {"id", "name", "duration", "description", "status", *parameter_columns, *voice_columns}
+    editable = {
+        "name": str,
+        "duration": int,
+        "description": str,
+        **{column: str for column in parameter_columns | voice_columns},
+    }
     if payload.column not in existing_columns:
         raise HTTPException(status_code=400, detail=f"Study column '{payload.column}' does not exist")
     expected = editable.get(payload.column)
@@ -248,6 +276,10 @@ async def edit_study(study_id: UUID, payload: EditStudyRequest, _owner: StudyOwn
         value = value.strip()
         if not value or len(value) > 255:
             raise HTTPException(status_code=422, detail="Study name must contain between 1 and 255 characters")
+    elif payload.column in voice_columns:
+        value = value.strip().casefold()
+        if value not in {"male", "female"}:
+            raise HTTPException(status_code=422, detail="Study TTS voice must be one of: male, female")
     elif payload.column == "description" or payload.column in parameter_columns:
         value = value.strip()
         if len(value) > 10000:
@@ -256,10 +288,13 @@ async def edit_study(study_id: UUID, payload: EditStudyRequest, _owner: StudyOwn
     elif value <= 0:
         raise HTTPException(status_code=422, detail="Study duration must be greater than zero")
     # Column names come exclusively from the allow-list above.
+    value_expression = ":value::study_tts_voice" if payload.column in voice_columns else ":value"
     result = await db.execute(
-        f"""UPDATE study SET {payload.column}=:value WHERE id=:id::uuid
+        f"""UPDATE study SET {payload.column}={value_expression} WHERE id=:id::uuid
             RETURNING id,name,duration,description,status::text AS status,
-                      control_script_generation_parameters,experimental_script_generation_parameters""",
+                      control_script_generation_parameters,experimental_script_generation_parameters,
+                      control_tts_voice::text AS control_tts_voice,
+                      experimental_tts_voice::text AS experimental_tts_voice""",
         {"value": value, "id": study_id},
     )
     return study_response(result.rows[0])
@@ -274,7 +309,9 @@ async def transition(db, study_id: UUID, current: set[str], target: str):
         result = await db.execute(
             """UPDATE study SET status=:target::study_status""" + activation_assignment + """ WHERE id=:id::uuid
                RETURNING id,name,duration,description,status::text AS status,
-                         control_script_generation_parameters,experimental_script_generation_parameters""",
+                         control_script_generation_parameters,experimental_script_generation_parameters,
+                         control_tts_voice::text AS control_tts_voice,
+                         experimental_tts_voice::text AS experimental_tts_voice""",
             {"target": target, "id": study_id}, transaction=tx,
         )
     return study_response(result.rows[0])

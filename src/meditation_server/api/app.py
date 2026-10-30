@@ -128,9 +128,17 @@ async def generate_baseline_script(payload: ScriptWithoutParkRequest, _user: Cur
 
 
 @app.post("/tts")
-async def text_to_speech(payload: TtsRequest, _user: CurrentUserDependency):
+async def text_to_speech(payload: TtsRequest, user: CurrentUserDependency, db: DatabaseDependency):
     try:
-        audio = await synthesize(payload.text)
+        configured_voice = await studies.resolve_current_tts_voice(db, user.id)
+        if payload.voice != configured_voice:
+            raise HTTPException(
+                status_code=409,
+                detail="Requested TTS voice does not match the current study configuration",
+            )
+        audio = await synthesize(payload.text, configured_voice)
+    except HTTPException:
+        raise
     except InvalidSpeechText as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except SpeechDisabled as exc:

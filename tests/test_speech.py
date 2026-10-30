@@ -50,7 +50,7 @@ def test_polly_request_uses_configured_mp3_voice(monkeypatch) -> None:
     client = RecordingPollyClient()
     monkeypatch.setenv("TTS_PROVIDER", "polly")
     monkeypatch.setenv("AWS_REGION", "ap-southeast-2")
-    monkeypatch.setenv("TTS_VOICE_ID", "Russell")
+    monkeypatch.setenv("TTS_MALE_VOICE_ID", "Russell")
     monkeypatch.setenv("TTS_ENGINE", "standard")
     monkeypatch.setenv("TTS_LANGUAGE_CODE", "en-AU")
     monkeypatch.setattr(speech.boto3, "client", lambda *args, **kwargs: client)
@@ -67,6 +67,19 @@ def test_polly_request_uses_configured_mp3_voice(monkeypatch) -> None:
         "VoiceId": "Russell",
     }
     assert client.stream is not None and client.stream.closed
+
+
+def test_polly_request_can_use_standard_australian_female_voice(monkeypatch) -> None:
+    client = RecordingPollyClient()
+    monkeypatch.setenv("TTS_PROVIDER", "polly")
+    monkeypatch.setattr(speech.boto3, "client", lambda *args, **kwargs: client)
+
+    asyncio.run(speech.synthesize("A quiet walk.", "female"))
+
+    assert client.request is not None
+    assert client.request["Engine"] == "standard"
+    assert client.request["LanguageCode"] == "en-AU"
+    assert client.request["VoiceId"] == "Nicole"
 
 
 def test_empty_polly_response_is_rejected(monkeypatch) -> None:

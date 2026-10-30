@@ -75,8 +75,8 @@ details and devices.
 - [ ] Verify Secrets Manager resource policies and rotation runbooks.
 - [ ] Confirm SES production access, verified identities, DKIM, SPF, DMARC,
       bounce/complaint handling, and support contact.
-- [ ] Confirm Polly remains restricted to Australian English `Russell` standard
-      synthesis and can be disabled through configuration.
+- [ ] Confirm Polly remains restricted to Australian English `Russell` and
+      `Nicole` standard synthesis and can be disabled through configuration.
 
 ## 6. Data, backup, and operations
 

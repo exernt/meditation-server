@@ -39,8 +39,8 @@ cost.
 
 TTS uses a provider-neutral HTTP boundary with a current
 `TTS_PROVIDER=polly|disabled` implementation. The initial provider is
-synchronous Amazon Polly using Australian English `Russell`, the standard
-engine, and MP3 output. Only narration text is disclosed to Polly.
+synchronous Amazon Polly using the standard Australian English `Russell` and
+`Nicole` voices and MP3 output. Only narration text is disclosed to Polly.
 Audio is cached in Android app-private storage; no server-side audio bucket is
 provisioned. Disabling TTS leaves script generation and text-only playback
 available and preserves the boundary for later provider evaluation. The
@@ -236,7 +236,7 @@ jitter and then move to a DLQ with an alarm.
 | Long work | SQS, worker Lambda, DLQ | Back-pressure, retry, and failure isolation. |
 | Primary data | Aurora PostgreSQL Serverless v2 Express Configuration | Free Plan-eligible validation plus relational integrity, JSONB, transactions, and row locking. |
 | Database transport | RDS Data API | No driver pool, RDS Proxy, Lambda VPC attachment, or NAT Gateway. |
-| Speech | Optional Amazon Polly (`Russell`, standard, `en-AU`) | Managed synthesis without model/FFmpeg dependencies; provider can be disabled or replaced. |
+| Speech | Optional Amazon Polly (`Russell`/`Nicole`, standard, `en-AU`) | Managed synthesis without model/FFmpeg dependencies; provider can be disabled or replaced. |
 | Email | SES | Transactional email with IAM-based access. |
 | Secrets | Secrets Manager | Required for the Data API credential and appropriate for external keys. |
 | Observability | CloudWatch | Essential metrics, alarms, and short-retention redacted logs. |

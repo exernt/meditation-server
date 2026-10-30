@@ -38,7 +38,7 @@ Create a deployment register in the repository and agree on these values:
 | Resource prefix | `wm-dev-` / `wm-prod-` |
 | Required tags | `Application`, `Environment`, `Owner`, `ManagedBy`, `DataClassification` |
 | Data classification | `sensitive-research` for database, logs, and queues |
-| TTS | Optional Polly: `Russell`, standard engine, `en-AU`; `disabled` remains supported |
+| TTS | Optional Polly: `Russell`/`Nicole`, standard engine, `en-AU`; `disabled` remains supported |
 | Recovery baseline | Production 30-day PITR; development 1 day; monthly restore test |
 | Alert recipients | Maintained team/client mailbox, not one student's address |
 
@@ -418,7 +418,8 @@ The migrated API currently supports Polly and disabled modes:
 
 ```text
 TTS_PROVIDER=polly
-TTS_VOICE_ID=Russell
+TTS_MALE_VOICE_ID=Russell
+TTS_FEMALE_VOICE_ID=Nicole
 TTS_ENGINE=standard
 TTS_LANGUAGE_CODE=en-AU
 ```

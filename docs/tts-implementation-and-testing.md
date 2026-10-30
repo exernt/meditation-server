@@ -8,7 +8,7 @@ The public contract is intentionally provider-neutral:
 
 ```text
 Android app
-  -> authenticated POST /tts {"text": "..."}
+  -> authenticated POST /tts {"text": "...", "voice": "male|female"}
   -> API Gateway (binary media type: audio/mpeg)
   -> FastAPI Lambda
   -> Amazon Polly SynthesizeSpeech
@@ -16,8 +16,10 @@ Android app
   -> Android app-private cache and MediaPlayer
 ```
 
-`POST /tts` requires a valid access token. The request accepts only `text`, from
-1 to 3,000 characters. The successful response is MP3 data with
+`POST /tts` requires a valid access token. The request accepts `text`, from
+1 to 3,000 characters, and an abstract `male` or `female` voice selection.
+The server verifies that selection against the caller's active study group;
+callers without an active study can use only `male`. The successful response is MP3 data with
 `Content-Type: audio/mpeg`, `Cache-Control: no-store`, and an inline
 `narration.mp3` filename. A disabled provider returns `503`; a provider or
 transport failure returns `502`.
@@ -31,10 +33,10 @@ execution environments. The initial synthesis settings are:
 | --- | --- |
 | Provider | Amazon Polly |
 | Region | Lambda/AWS Region (`ap-southeast-2`) |
-| Voice | `Russell` |
+| Voices | `Russell` (male), `Nicole` (female) |
 | Language | `en-AU` |
 | Engine | `standard` |
-| Public input | Provider-neutral text with optional `(pause)` markers |
+| Public input | Provider-neutral text, voice gender, and optional `(pause)` markers |
 | Polly input | Escaped SSML; each marker becomes a 2.5-second break |
 | Output | MP3 |
 
@@ -69,8 +71,10 @@ ttsProvider=disabled
 
 `ttsProvider` is supplied by the deployment workflow's `TTS_PROVIDER`
 environment variable. `polly` is the current default if the context value is
-omitted. The voice, engine, and language are Lambda environment variables, but
-their deployed values are currently fixed in `infra/stacks/api_stack.py`.
+omitted. The voice IDs, engine, and language are Lambda environment variables,
+but their deployed values are currently fixed in `infra/stacks/api_stack.py`.
+Researchers select a voice independently for each study group. Both groups
+default to male, and the Android cache key includes the selection.
 
 This means the `/tts` API boundary is provider-neutral, while the server-side
 implementation is currently a Polly/disabled switch rather than a general
@@ -80,7 +84,7 @@ runtime plug-in registry.
 
 1. Confirm the proposed voice supports the selected language and engine in the
    deployment Region.
-2. Change `TTS_VOICE_ID`, `TTS_ENGINE`, and, if needed,
+2. Change `TTS_MALE_VOICE_ID` or `TTS_FEMALE_VOICE_ID`, `TTS_ENGINE`, and, if needed,
    `TTS_LANGUAGE_CODE` in `infra/stacks/api_stack.py`.
 3. Update the speech unit test to assert the exact request sent to the provider.
 4. Run the server tests and synthesize the API stack.

@@ -58,8 +58,9 @@ session invalidation, single-device sessions (a new login revokes the previous
 session), and security-event records.
 
 The workload is restricted to `ap-southeast-2`. Amazon Polly is optional and is
-selected with CDK context `ttsProvider=polly|disabled`; the supported initial
-voice is `Russell`, Australian English, standard engine. See
+selected with CDK context `ttsProvider=polly|disabled`; the supported voices
+are `Russell` (male) and `Nicole` (female), both Australian English using the
+standard engine. See
 [`docs/tts-implementation-and-testing.md`](docs/tts-implementation-and-testing.md)
 for the exact request flow, current limitations, and provider comparison
 procedure.

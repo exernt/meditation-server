@@ -21,6 +21,7 @@ class InvalidSpeechText(ValueError):
 _PAUSE = re.compile(r"\(pause\)", re.IGNORECASE)
 _BREAK = '<break time="2500ms"/>'
 _MAX_POLLY_SSML_CHARACTERS = 6000
+_POLLY_VOICE_IDS = {"male": "Russell", "female": "Nicole"}
 
 
 def _as_ssml(text: str) -> str:
@@ -46,12 +47,14 @@ def _polly_client(region: str | None):
     )
 
 
-async def synthesize(text: str) -> bytes:
+async def synthesize(text: str, voice: str = "male") -> bytes:
     provider = os.getenv("TTS_PROVIDER", "disabled").strip().casefold()
     if provider == "disabled":
         raise SpeechDisabled("Text-to-speech is disabled")
     if provider != "polly":
         raise RuntimeError(f"Unsupported text-to-speech provider: {provider}")
+    if voice not in _POLLY_VOICE_IDS:
+        raise ValueError(f"Unsupported text-to-speech voice: {voice}")
     ssml = _as_ssml(text)
     client = _polly_client(os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION"))
     response = await asyncio.to_thread(
@@ -61,7 +64,11 @@ async def synthesize(text: str) -> bytes:
         OutputFormat="mp3",
         Text=ssml,
         TextType="ssml",
-        VoiceId=os.getenv("TTS_VOICE_ID", "Russell"),
+        VoiceId=(
+            os.getenv("TTS_MALE_VOICE_ID", os.getenv("TTS_VOICE_ID", "Russell"))
+            if voice == "male"
+            else os.getenv("TTS_FEMALE_VOICE_ID", "Nicole")
+        ),
     )
     stream = response["AudioStream"]
     try:

@@ -172,6 +172,7 @@ class ScriptWithoutParkRequest(BaseModel):
 class TtsRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     text: str = Field(min_length=1, max_length=3000)
+    voice: Literal["male", "female"] = "male"
 
 
 class GenerationJobRequest(BaseModel):
