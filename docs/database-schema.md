@@ -29,6 +29,7 @@ erDiagram
         integer age
         user_role role
         boolean email_verified
+        text pending_researcher_institution
         timestamptz disabled_at
         timestamptz created_on
     }

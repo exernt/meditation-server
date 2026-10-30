@@ -55,11 +55,12 @@ class MigrationLoadingTests(unittest.TestCase):
         migrations = load_migrations(directory)
         self.assertEqual(
             [migration.version for migration in migrations],
-            ["0001", "0002", "0003", "0004"],
+            ["0001", "0002", "0003", "0004", "0005"],
         )
         self.assertGreater(len(migrations[0].statements), 20)
         self.assertGreater(len(migrations[1].statements), 5)
         self.assertEqual(len(migrations[2].statements), 3)
+        self.assertEqual(len(migrations[4].statements), 4)
 
     def test_loads_ordered_statements_and_checksum(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

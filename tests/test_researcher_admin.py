@@ -45,6 +45,7 @@ def test_list_pending_researchers_returns_android_response_shape() -> None:
 
     def respond(sql, _parameters):
         assert "profile.verified_at IS NULL" in sql
+        assert "users.email_verified = true" in sql
         assert "users.disabled_at IS NULL" in sql
         return QueryResult(rows=({
             "user_id": user_id,

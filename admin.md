@@ -153,6 +153,11 @@ The dashboard obtains the cards from
 sets `researcher_profiles.verified_at` and permits the account to use
 researcher-only endpoints.
 
+For a new researcher signup, the server retains the submitted institution as
+pending registration data until email verification succeeds. Only then does it
+create the `researcher_profiles` row and expose the request on the Admin
+Dashboard. Unverified email accounts are not included in the pending list.
+
 Rejection applies only while the request is pending. It deletes the unverified
 researcher profile, changes the account role back to `participant`, increments
 the account's session version, revokes active refresh tokens, and records a

@@ -108,8 +108,14 @@ async def register(payload: RegisterRequest, db: DatabaseDependency):
     role = "researcher" if payload.researcher_institution else "participant"
     async with db.transaction() as tx:
         await db.execute(
-            """INSERT INTO users (id, email, password_hash, gender, age, role)
-               VALUES (:id::uuid, :email, :password_hash, :gender, :age, :role::user_role)""",
+            """INSERT INTO users (
+                   id, email, password_hash, gender, age, role,
+                   pending_researcher_institution
+               )
+               VALUES (
+                   :id::uuid, :email, :password_hash, :gender, :age,
+                   :role::user_role, :pending_researcher_institution
+               )""",
             {
                 "id": user_id,
                 "email": str(payload.email),
@@ -117,15 +123,10 @@ async def register(payload: RegisterRequest, db: DatabaseDependency):
                 "gender": payload.gender,
                 "age": payload.age,
                 "role": role,
+                "pending_researcher_institution": payload.researcher_institution,
             },
             transaction=tx,
         )
-        if payload.researcher_institution:
-            await db.execute(
-                "INSERT INTO researcher_profiles (user_id, institution) VALUES (:id::uuid, :institution)",
-                {"id": user_id, "institution": payload.researcher_institution},
-                transaction=tx,
-            )
         await db.execute(
             """INSERT INTO email_verification_tokens (user_id, token_hash, expires_at)
                VALUES (:id::uuid, :token_hash, :expires_at)""",
@@ -167,7 +168,32 @@ async def confirm_verification(payload: VerificationConfirmRequest, db: Database
         if not result.rows or result.rows[0]["used_at"] is not None or result.rows[0]["expires_at"] < datetime.now(UTC):
             raise HTTPException(status_code=400, detail="Verification token is invalid or has expired")
         row = result.rows[0]
-        await db.execute("UPDATE users SET email_verified = true WHERE id = :id::uuid", {"id": row["user_id"]}, transaction=tx)
+        verified_user = await db.execute(
+            """UPDATE users
+               SET email_verified = true
+               WHERE id = :id::uuid
+               RETURNING role::text AS role, pending_researcher_institution""",
+            {"id": row["user_id"]},
+            transaction=tx,
+        )
+        user = verified_user.rows[0]
+        if user["role"] == "researcher":
+            await db.execute(
+                """INSERT INTO researcher_profiles (user_id, institution)
+                   VALUES (:id::uuid, :institution)""",
+                {
+                    "id": row["user_id"],
+                    "institution": user["pending_researcher_institution"],
+                },
+                transaction=tx,
+            )
+        await db.execute(
+            """UPDATE users
+               SET pending_researcher_institution = NULL
+               WHERE id = :id::uuid""",
+            {"id": row["user_id"]},
+            transaction=tx,
+        )
         await db.execute("UPDATE email_verification_tokens SET used_at = now() WHERE id = :id::uuid", {"id": row["id"]}, transaction=tx)
         await _record_event(db, "email_verified", user_id=row["user_id"], transaction=tx)
     return _message("Email verified")
@@ -383,6 +409,8 @@ async def disable_user(user_id: UUID, db: DatabaseDependency):
 
 @router.post("/register-researcher", status_code=201)
 async def register_researcher(payload: ResearcherRequest, user: CurrentUserDependency, db: DatabaseDependency):
+    if not user.email_verified:
+        raise HTTPException(status_code=403, detail="Email verification is required")
     found = await db.execute("SELECT user_id FROM researcher_profiles WHERE user_id=:id::uuid", {"id": user.id})
     if found.rows:
         raise HTTPException(status_code=409, detail="Researcher profile already exists for this account")
@@ -402,6 +430,7 @@ async def list_pending_researchers(db: DatabaseDependency):
            JOIN users ON users.id = profile.user_id
            WHERE profile.verified_at IS NULL
              AND users.role = 'researcher'::user_role
+              AND users.email_verified = true
              AND users.disabled_at IS NULL
            ORDER BY profile.created_on ASC, profile.user_id ASC"""
     )
