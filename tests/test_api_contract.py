@@ -65,7 +65,6 @@ EXPECTED_MIGRATED_ROUTES = {
     ("GET", "/questionnaires"),
     ("GET", "/questionnaires/{questionnaire_id}"),
     ("PUT", "/questionnaires/{questionnaire_id}"),
-    ("POST", "/questionnaires/{questionnaire_id}/publish"),
     ("POST", "/studies/{study_id}/questionnaires"),
     ("GET", "/studies/{study_id}/questionnaires"),
     ("GET", "/studies/{study_id}/questionnaires/{study_questionnaire_id}"),

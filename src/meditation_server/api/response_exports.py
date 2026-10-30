@@ -203,7 +203,7 @@ async def _authenticate_export_researcher(db, *, payload: LoginRequest, source_i
                  FROM users
                  LEFT JOIN researcher_profiles AS profile ON profile.user_id=users.id
                 WHERE users.email=:email
-                FOR UPDATE""",
+                FOR UPDATE OF users""",
             {"email": str(payload.email)},
             transaction=transaction,
         )

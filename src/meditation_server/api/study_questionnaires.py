@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException
 
 from meditation_server.api.dependencies import CurrentUserDependency, DatabaseDependency, StudyOwnerDependency
 from meditation_server.api.models import IssueQuestionnaireRequest, SubmitAnswersRequest
-from meditation_server.domain.questionnaires import validate_response
+from meditation_server.domain.questionnaires import validate_questionnaire, validate_response
 
 
 router = APIRouter(prefix="/studies/{study_id}/questionnaires", tags=["study-questionnaires"])
@@ -53,7 +53,8 @@ def summary(row, has_responded=None):
 async def issue(study_id: UUID, payload: IssueQuestionnaireRequest, owner: StudyOwnerDependency, db: DatabaseDependency):
     async with db.transaction() as tx:
         question = await db.execute(
-            "SELECT id,title,researcher_id,status::text AS status FROM questionnaires WHERE id=:id::uuid",
+            """SELECT id,title,researcher_id,status::text AS status,definition
+               FROM questionnaires WHERE id=:id::uuid""",
             {"id": payload.questionnaire_id}, transaction=tx,
         )
         if not question.rows:
@@ -61,15 +62,28 @@ async def issue(study_id: UUID, payload: IssueQuestionnaireRequest, owner: Study
         q = question.rows[0]
         if q["researcher_id"] != owner.id:
             raise HTTPException(status_code=403, detail="You do not own this questionnaire")
-        if q["status"] != "published":
-            raise HTTPException(status_code=409, detail="Only published questionnaires can be issued")
+        if q["status"] == "archived":
+            raise HTTPException(status_code=409, detail="Archived questionnaires cannot be issued")
+        if q["status"] not in {"draft", "published"}:
+            raise HTTPException(status_code=409, detail="Questionnaire cannot be issued in its current state")
+        try:
+            validate_questionnaire(q["definition"])
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         study = await db.execute("SELECT status::text AS status FROM study WHERE id=:id::uuid FOR UPDATE", {"id": study_id}, transaction=tx)
-        if study.rows[0]["status"] not in {"recruiting", "active"}:
-            raise HTTPException(status_code=409, detail="Questionnaires can only be issued to recruiting or active studies")
+        if study.rows[0]["status"] != "active":
+            raise HTTPException(status_code=409, detail="Questionnaires can only be issued to active studies")
         current = await db.execute(
             "SELECT COALESCE(max(round_number),0) AS round FROM study_questionnaires WHERE study_id=:study::uuid AND questionnaire_id=:questionnaire::uuid",
             {"study": study_id, "questionnaire": payload.questionnaire_id}, transaction=tx,
         )
+        if q["status"] == "draft":
+            await db.execute(
+                """UPDATE questionnaires SET status='published'::questionnaire_status
+                   WHERE id=:id::uuid""",
+                {"id": payload.questionnaire_id},
+                transaction=tx,
+            )
         result = await db.execute(
             """INSERT INTO study_questionnaires (id,study_id,questionnaire_id,round_number)
                VALUES (:id::uuid,:study::uuid,:questionnaire::uuid,:round)

@@ -84,7 +84,7 @@ async def list_studies(
 @router.get("/mine")
 async def my_studies(user: CurrentUserDependency, db: DatabaseDependency):
     result = await db.execute(
-        """SELECT s.id AS study_id,s.name,s.duration,s.description,s.status::text AS status,
+        """SELECT s.id AS study_id,s.name,s.duration,s.description,s.status::text AS status,s.activated_at,
                   sr.study_group::text AS study_group,sr.registered_at,sr.consented_at,sr.withdrawn_at
            FROM study_registrations sr JOIN study s ON s.id=sr.study_id
            WHERE sr.user_id=:user::uuid""",
@@ -113,7 +113,7 @@ async def current_script_parameters(user: CurrentUserDependency, db: DatabaseDep
         """SELECT s.id AS study_id,s.status::text AS study_status,s.script_generation_parameters
            FROM study_registrations sr JOIN study s ON s.id=sr.study_id
            WHERE sr.user_id=:user::uuid AND sr.withdrawn_at IS NULL
-             AND s.status IN ('recruiting'::study_status,'active'::study_status)
+             AND s.status='active'::study_status
            ORDER BY sr.registered_at DESC LIMIT 1""",
         {"user": user.id},
     )
@@ -249,8 +249,9 @@ async def transition(db, study_id: UUID, current: set[str], target: str):
         row = await get_study_row(db, study_id, transaction=tx, lock=True)
         if row["status"] not in current:
             raise HTTPException(status_code=409, detail=f"Cannot move study from '{row['status']}' to '{target}'")
+        activation_assignment = ",activated_at=now()" if target == "active" else ""
         result = await db.execute(
-            """UPDATE study SET status=:target::study_status WHERE id=:id::uuid
+            """UPDATE study SET status=:target::study_status""" + activation_assignment + """ WHERE id=:id::uuid
                RETURNING id,name,duration,description,status::text AS status,script_generation_parameters""",
             {"target": target, "id": study_id}, transaction=tx,
         )

@@ -72,20 +72,3 @@ async def replace(questionnaire_id: UUID, payload: QuestionnaireRequest, researc
         {"title": definition["title"], "definition": definition, "id": questionnaire_id},
     )
     return dict(result.rows[0])
-
-
-@router.post("/{questionnaire_id}/publish")
-async def publish(questionnaire_id: UUID, researcher: VerifiedResearcherDependency, db: DatabaseDependency):
-    current = await owned(db, questionnaire_id, researcher.id)
-    if current["status"] == "archived":
-        raise HTTPException(status_code=409, detail="An archived questionnaire cannot be published")
-    try:
-        validate_questionnaire(current["definition"])
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    result = await db.execute(
-        """UPDATE questionnaires SET status='published'::questionnaire_status WHERE id=:id::uuid
-           RETURNING id,title,researcher_id,status::text AS status,definition,created_on""",
-        {"id": questionnaire_id},
-    )
-    return dict(result.rows[0])

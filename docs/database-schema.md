@@ -92,6 +92,7 @@ erDiagram
         text description
         text script_generation_parameters
         study_status status
+        timestamptz activated_at
     }
 
     STUDY_CREATED_BY {
