@@ -55,6 +55,7 @@ class EnvironmentConfig:
     email_verification_link_base: str
     response_export_link_base: str
     tts_provider: str
+    waf_mode: str
 
     @property
     def is_production(self) -> bool:
@@ -89,6 +90,10 @@ class EnvironmentConfig:
         tts_provider = str(app.node.try_get_context("ttsProvider") or "polly").strip().casefold()
         if tts_provider not in {"disabled", "polly"}:
             raise ValueError("ttsProvider must be disabled or polly")
+
+        waf_mode = str(app.node.try_get_context("wafMode") or "count").strip().casefold()
+        if waf_mode not in {"count", "block"}:
+            raise ValueError("wafMode must be count or block")
 
         password_reset_link = str(_required(app, "passwordResetLinkBase")).strip()
         parsed_password_reset_link = urlsplit(password_reset_link)
@@ -155,5 +160,6 @@ class EnvironmentConfig:
             email_verification_link_base=verification_link,
             response_export_link_base=export_link,
             tts_provider=tts_provider,
+            waf_mode=waf_mode,
         )
 

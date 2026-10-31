@@ -310,8 +310,10 @@ Initial guardrails:
 
 - API Lambda reserved concurrency: omit it while the account quota remains 10;
   no positive reservation is possible because Lambda must retain 100 unreserved
-  units. After the quota increase, choose a ceiling from measured peak
-  concurrency and downstream capacity rather than adopting 150 automatically.
+  units. The quota-increase request was rejected, so the 100-user acceptance
+  test remains explicitly unverified before handover. After a future increase,
+  the client should choose a ceiling from measured peak concurrency and
+  downstream capacity rather than adopting 150 automatically.
 - API memory: start at 1,024 MB and tune from measurements.
 - API timeout: 25 seconds, below the gateway integration timeout.
 - Worker SQS maximum concurrency: 2 with batch size 1 during Free Plan
@@ -364,8 +366,9 @@ client has an explicit key-ownership/rotation need and accepts the cost.
 
 Production data must not enter developer laptops or the development stack.
 Use Aurora Express's one-day backup retention for Free Plan development
-verification. After the paid-plan transition, configure 30-day PITR for
-production. Take 30-day manual snapshots before destructive
+verification. The synthetic production rehearsal and long-lived production
+configuration use 30-day PITR plus deletion protection, including while the
+rehearsal remains on the Free Plan. Take 30-day manual snapshots before destructive
 migrations and handover, and perform a documented monthly restore test. Aurora
 already captures incremental changes continuously, so a separate weekly-full,
 daily-differential, hourly-log schedule would duplicate the service's native
@@ -424,7 +427,9 @@ cross-border disclosure, consent wording, and research-record retention.
 
 - Implement consent versioning, study participant codes, audit events, email
   verification, retention, and privacy notices.
-- Run authorization, restore, DLQ, secret, dependency, and 100-user tests.
+- Run authorization, restore, DLQ, secret, and dependency tests. Record the
+  100-user test as deferred until the client obtains a sufficient concurrency
+  quota after handover.
 
 ## Deferred items
 

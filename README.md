@@ -2,8 +2,9 @@
 
 This repository contains the AWS CDK foundation and the migration target for the
 Walking Meditation backend. The API Lambda now runs the migrated FastAPI
-application through API Gateway; production remains gated on integration and
-load testing.
+application through API Gateway; the pre-handover production rehearsal remains
+gated on integration testing, while capacity testing is a documented
+post-handover exception because the quota increase was rejected.
 
 ## Current migration status
 
@@ -38,8 +39,10 @@ and delivery flow.
 The migrated application is implemented and locally tested in the current
 working tree, but it has not yet been deployed over the verified synthetic
 infrastructure baseline. Live Aurora endpoint tests, live Polly/device playback,
-restore testing, failure-path exercises, and the 100-active-user test remain
-release gates. Android integration is also pending review of the teammate's
+restore testing, and failure-path exercises remain release gates. The
+100-active-user test is an explicitly unverified post-handover requirement
+because the regional concurrency quota increase was rejected. Android
+integration is also pending review of the teammate's
 incoming app pull request; no current mobile working-tree changes should be
 treated as final until that review is complete.
 
@@ -96,7 +99,8 @@ long-lived production rollout. After that upgrade, separate `dev` and `prod`
 stacks may coexist; development remains synthetic and must never receive a copy
 of production data.
 
-See `docs/aws-account-and-repo-setup.md`, `docs/github-actions-oidc.md`, and
+See `docs/aws-account-and-repo-setup.md`, `docs/github-actions-oidc.md`,
+`docs/production-deployment-rehearsal.md`, and
 `docs/account-handover-checklist.md` before bootstrapping or deploying.
 
 ## Database migrations

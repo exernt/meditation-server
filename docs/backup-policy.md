@@ -9,7 +9,8 @@ point-in-time restore throughout the configured retention window.
 | Environment | Automated PITR | Manual snapshots | Restore testing |
 | --- | --- | --- | --- |
 | Development on Free Plan | 1 day | Before destructive migration only; delete after validation | Before production release |
-| Production after paid-plan transition | 30 days | Before destructive migrations and final account handover; retain 30 days unless the client requires longer | Monthly and before handover |
+| Synthetic production rehearsal on Free Plan | 30 days plus deletion protection | Before destructive migrations and final account handover; retain 30 days unless the client requires longer | Before handover if the two-cluster account limit leaves room for the temporary restore; otherwise record an explicit client-owned exception |
+| Production after paid-plan transition | 30 days plus deletion protection | Before destructive migrations and final account handover; retain 30 days unless the client requires longer | Monthly and before handover |
 
 Aurora continuously captures the changes needed for point-in-time recovery, so
 separate hourly transaction-log backups and daily differential backups are not
@@ -21,6 +22,12 @@ The restore objective is not satisfied until a restore has been tested. Each
 test must record source recovery point, restored cluster identifier, start/end
 time, schema checks, application smoke test, cleanup, and whether the measured
 RPO/RTO met the client-approved targets.
+
+The provisioning script applies these settings after Express creation, waits for
+the cluster to return to `available`, and fails unless AWS reports the expected
+backup retention, deletion-protection, Data API and PostgreSQL log-export state.
+Deletion protection is a guard against accidental cluster deletion; it does not
+replace PITR or a pre-handover manual snapshot.
 
 ## Cost treatment
 
@@ -36,10 +43,11 @@ As verified against AWS pricing on 23 October 2026:
   is **USD 0.023 per GB-month**. At that rate, 10 GiB, 50 GiB, and 100 GiB of
   billable excess are approximately USD 0.23, USD 1.15, and USD 2.30 per month.
 - The current Aurora Free Plan requires Express Configuration and includes up
-  to 4 ACUs and 1 GiB of database storage per eligible cluster, plus account
-  credits. This project uses one development cluster for full deployment
-  verification. It does not make backup growth or retained snapshots
-  perpetually free.
+  to 4 ACUs and 1 GiB of database storage per eligible cluster, with at most two
+  clusters/two instances per account, plus account credits. The one-off
+  production rehearsal can use the second cluster only after checking the live
+  account state and remaining credits. The plan does not make backup growth or
+  retained snapshots perpetually free.
 
 Monitor `BackupRetentionPeriodStorageUsed`, `SnapshotStorageUsed`, and
 `TotalBackupStorageBilled`. Delete obsolete manual snapshots only after the

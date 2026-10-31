@@ -42,3 +42,13 @@ def test_existing_cluster_parameter_group_change_requires_explicit_switch() -> N
     assert "[switch]$ApplyLoggingParameterGroup" in SCRIPT
     assert "elseif ($ApplyLoggingParameterGroup)" in SCRIPT
     assert "--no-apply-immediately" in SCRIPT
+
+
+def test_production_backup_and_deletion_protection_are_applied_and_verified() -> None:
+    assert '$retentionDays = if ($Stage -eq "prod") { 30 } else { 1 }' in SCRIPT
+    assert '$protectionFlag = if ($Stage -eq "prod") { "--deletion-protection" }' in SCRIPT
+    assert '$expectedDeletionProtection = $Stage -eq "prod"' in SCRIPT
+    assert "BackupRetentionPeriod -ne $retentionDays" in SCRIPT
+    assert "DeletionProtection -ne $expectedDeletionProtection" in SCRIPT
+    assert "BackupRetentionDays = $cluster.BackupRetentionPeriod" in SCRIPT
+    assert "DeletionProtection = $cluster.DeletionProtection" in SCRIPT

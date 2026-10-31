@@ -10,16 +10,19 @@ This guide tracks the setup and implementation order for the project's current
 single-account, free-tier-shaped architecture. It deliberately avoids baseline
 resources with fixed hourly costs: no NAT Gateway, RDS Proxy, custom domain, or
 always-on development/production pair while Free Plan validation is underway.
-After the required paid-plan upgrade, separate development and production
-stacks may coexist. WAF is created only for production and is a required
-public-launch control.
+One short-lived, synthetic production deployment rehearsal is permitted before
+handover, using the second eligible Express cluster only after checking the live
+account limits and credits. After the paid-plan upgrade, separate development
+and production stacks may coexist. WAF is created only for production and is a
+required public-launch control.
 
 The Free Plan is not an unlimited or permanent zero-cost plan. The current
-requirement is to complete one full synthetic development deployment and its
-verification while the account remains on that plan. Aurora is eligible only
-when created with Express Configuration. Check remaining credits, expiry, and
-service usage before each deployment. The client is responsible for upgrading
-to a paid plan before expiry and before the long-lived production rollout.
+requirement is to complete one full synthetic development deployment and one
+synthetic production-flow rehearsal while the account remains on that plan.
+Aurora is eligible only when created with Express Configuration. Check remaining
+credits, expiry, cluster count, and service usage before each deployment. The
+client is responsible for upgrading to a paid plan before expiry and before the
+long-lived production rollout.
 
 ## 1. Record the decisions first
 
@@ -31,7 +34,7 @@ Create a deployment register in the repository and agree on these values:
 | AWS account | One account, owned by or transferable to the client |
 | AWS region | `ap-southeast-2` only |
 | Repository | `exernt/meditation-server` |
-| Free Plan validation state | One `dev` stack, synthetic data only |
+| Free Plan validation state | Verified `dev`, followed by one synthetic `production` deployment rehearsal; no real participant data |
 | Paid-plan operating state | Separate `dev` and `production` stacks; dev remains synthetic |
 | API hostname initially | Generated API Gateway URL |
 | GitHub environments | `dev` and `production`, both targeting the same account |
@@ -58,8 +61,11 @@ Inside the one account:
 1. Confirm the account can be handed to the client without transferring a
    student's personal email, phone, payment method, or MFA device.
 2. Record the 12-digit account ID and the current Free Tier/credit expiry.
-3. Keep only one deployed application environment during Free Plan validation;
-   permit separate dev and production stacks only after the paid-plan upgrade.
+3. Keep only one active application environment during ordinary Free Plan
+   validation. The one-off production rehearsal may use the second eligible
+   Aurora Express cluster, but must remain synthetic and within the account's
+   two-cluster/two-instance limit. Do not treat this as approval for a long-lived
+   development/production pair.
 4. Give `dev` and `production` distinct stack names, roles, secrets, and tags.
 5. Never copy production data into `dev`; stack naming is not a security
    boundary.
@@ -179,9 +185,10 @@ integration:
 5. Keep an in-memory/recording `EmailSender` adapter for unit and local tests.
    Assert the recipient, template variables, and reset link without sending
    externally. The SES adapter test separately proves IAM and API integration.
-6. Do not request production access merely to test functionality. Before a
-   public release, verify the client-owned domain, publish DKIM and SPF/DMARC,
-   request SES production access, and document bounce/complaint handling.
+6. Do not request production access merely to test functionality. The
+   pre-handover rehearsal remains on verified identities. After handover and
+   before a public release, the client owns domain verification, DKIM and
+   SPF/DMARC, SES production access, and bounce/complaint handling.
 
 An individually verified address is suitable for development, but not the
 final branded sender: it verifies only that exact address and does not establish
@@ -215,8 +222,11 @@ too small to configure any positive reserved concurrency because Lambda must
 leave 100 units unreserved. Leave API reserved concurrency unset for initial
 deployment testing; setting it to `0` would disable the API. Keep worker SQS
 maximum concurrency at 2 so the worker cannot consume the whole shared pool.
-Request and receive a quota increase before the 100-user load test, then choose
-an API reservation from measured peak concurrency and downstream capacity.
+The previous quota-increase request was rejected, so the 100-active-user load
+test is not manually verifiable before handover. Record that requirement as an
+explicit exception rather than a pass. The client owns a future quota request,
+load test, and any API reservation chosen from measured peak concurrency and
+downstream capacity.
 
 The worker uses SQS batch size 1 and maximum concurrency 2 during initial
 deployment testing. API Gateway, per-account, and per-user limits protect the
@@ -543,6 +553,11 @@ and [`configure-aws-credentials`](https://github.com/aws-actions/configure-aws-c
 - retain development only with synthetic data, separate secrets and database,
   and an approved ongoing budget.
 
+For the pre-handover Free Plan rehearsal, follow
+[`production-deployment-rehearsal.md`](production-deployment-rehearsal.md).
+The rehearsal records the rejected-quota load-test exception and keeps SES on
+verified identities; the client owns domain authentication after handover.
+
 Use GitHub concurrency groups so two jobs cannot mutate the same environment.
 Dev and production jobs may run concurrently, so neither environment stack may
 own account/Region singletons such as the API Gateway CloudWatch logging role.
@@ -590,6 +605,7 @@ for an explicit requirement with a named rotation/deletion owner.
 | `PASSWORD_RESET_LINK_BASE` | Generated API Gateway URL until custom domain exists |
 | `EMAIL_VERIFICATION_LINK_BASE` | Generated API Gateway URL ending in `/auth/email-verification/open` |
 | `TTS_PROVIDER` | `polly` for audio testing, or `disabled` for text-only testing |
+| `WAF_MODE` | `count` for the first production rehearsal, then `block` after log review and tuning |
 | `ANDROID_APP_PACKAGE_NAME` | Production Android application ID |
 | `ANDROID_APP_SHA256_CERT_FINGERPRINTS` | Release signing fingerprints only |
 
@@ -669,8 +685,9 @@ Do not accidentally reintroduce these while following older EC2/Heroku notes:
 The first implementation milestone—package boundaries, Data API repository
 layer, migrated FastAPI routes and native authentication, optional Polly path,
 CDK synthesis, and local tests—is substantially complete. The next milestone is
-to redeploy the migrated application to the synthetic development environment,
-exercise the live integrations and failure paths, and run the defined
-100-active-user test. This is not a production launch. Record the plan-expiry
-date and the named client owner responsible for upgrading the account before
-expiry.
+to exercise the live integrations and failure paths, then run the synthetic
+production deployment rehearsal. The 100-active-user test remains unverified
+because the quota increase was rejected; it is not a pre-handover pass
+condition. This is not a production launch. Record the plan-expiry date and the
+named client owner responsible for upgrading the account and completing the
+deferred capacity test after handover.

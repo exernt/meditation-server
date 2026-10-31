@@ -45,4 +45,21 @@ jobs:
           -c passwordResetLinkBase=https://api.example.invalid/auth/password-reset/open
           -c emailVerificationLinkBase=https://api.example.invalid/auth/email-verification/open
           -c responseExportLinkBase=https://api.example.invalid/response-exports
+          -c wafMode=count
+      - name: Strict production CDK synthesis
+        run: >-
+          npx cdk synth --strict --output cdk.out.prod
+          -c stage=prod
+          -c databaseClusterArn=arn:aws:rds:ap-southeast-2:111111111111:cluster:wm-prod-aurora-postgres
+          -c workerMaxConcurrency=2
+          -c monthlyBudgetUsd=20
+          -c budgetAlertEmail=ci@example.invalid
+          -c operationalAlertEmail=ci@example.invalid
+          -c googleMapsSecretArn=arn:aws:secretsmanager:ap-southeast-2:111111111111:secret:ci-google-AbC123
+          -c openAiSecretArn=arn:aws:secretsmanager:ap-southeast-2:111111111111:secret:ci-openai-XyZ789
+          -c passwordResetFromEmail=ci@example.invalid
+          -c passwordResetLinkBase=https://api.example.invalid/prod/auth/password-reset/open
+          -c emailVerificationLinkBase=https://api.example.invalid/prod/auth/email-verification/open
+          -c responseExportLinkBase=https://api.example.invalid/prod/response-exports
+          -c wafMode=count
 

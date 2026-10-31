@@ -133,26 +133,29 @@ reviewers for `production` and prevent administrator bypass if the GitHub plan
 supports that rule. The deployment workflow runs only from `main`, so keep
 `main` protected.
 
-Configure these variables separately in each environment:
+Configure these variables separately in each environment. For the manual
+production rehearsal, use the following production sources rather than copying
+the development environment wholesale:
 
-| Variable | Meaning |
-| --- | --- |
-| `AWS_ACCOUNT_ID` | Expected twelve-digit AWS account ID |
-| `AWS_DEPLOY_ROLE_ARN` | Matching `wm-*-github-deployer` ARN |
-| `DATABASE_CLUSTER_ARN` | ARN emitted by the Aurora Express provisioning script |
-| `API_RESERVED_CONCURRENCY` | Optional API ceiling; leave unset while the account concurrency quota is 10 |
-| `WORKER_MAX_CONCURRENCY` | SQS event-source maximum concurrency |
-| `MONTHLY_BUDGET_USD` | Approved monthly budget |
-| `BUDGET_ALERT_EMAIL` | Address for budget and forecast notifications |
-| `OPERATIONAL_ALERT_EMAIL` | Client-controlled address for workload ALARM and recovery notifications |
-| `GOOGLE_MAPS_SECRET_ARN` | Existing Secrets Manager ARN; API and generation worker |
-| `OPENAI_SECRET_ARN` | Existing Secrets Manager ARN; worker only |
-| `PASSWORD_RESET_FROM_EMAIL` | Verified SES sender |
-| `PASSWORD_RESET_LINK_BASE` | HTTPS API URL ending in `/auth/password-reset/open` |
-| `EMAIL_VERIFICATION_LINK_BASE` | HTTPS API URL ending in `/auth/email-verification/open` |
-| `RESPONSE_EXPORT_LINK_BASE` | HTTPS API URL ending in `/response-exports` |
-| `TTS_PROVIDER` | `polly` or `disabled` |
-| `SMOKE_TEST_TTS_VOICE` | Optional `male` or `female`; enables the post-deployment Polly smoke test for an account enrolled in an active study with that configured voice |
+| Variable | Production rehearsal value | Where to obtain or decide it |
+| --- | --- | --- |
+| `AWS_ACCOUNT_ID` | Twelve-digit target account ID | `aws sts get-caller-identity --profile wm-admin --query Account --output text` |
+| `AWS_DEPLOY_ROLE_ARN` | ARN of `wm-prod-github-deployer` | `WmIdentity` CloudFormation output `GitHubDeployerProdRoleArn` |
+| `DATABASE_CLUSTER_ARN` | ARN of `wm-prod-aurora-postgres` | `ClusterArn` printed by `provision-aurora-express.ps1 -Stage prod`, or `aws rds describe-db-clusters --db-cluster-identifier wm-prod-aurora-postgres --query "DBClusters[0].DBClusterArn" --output text` |
+| `API_RESERVED_CONCURRENCY` | Leave unset | The quota increase was rejected; a positive reservation cannot be configured while the regional concurrency quota is 10 |
+| `WORKER_MAX_CONCURRENCY` | `2` | Initial safety value in the architecture capacity plan; do not raise it without queue and downstream evidence |
+| `MONTHLY_BUDGET_USD` | Team-approved rehearsal ceiling | Deployment register/budget owner decision; this is not discoverable from AWS |
+| `BUDGET_ALERT_EMAIL` | Maintained team/client mailbox | Deployment register; the recipient must confirm the SNS subscription |
+| `OPERATIONAL_ALERT_EMAIL` | Maintained team/client operations mailbox | Deployment register; it may initially match `BUDGET_ALERT_EMAIL`, and the recipient must confirm the SNS subscription |
+| `GOOGLE_MAPS_SECRET_ARN` | ARN of the production/rehearsal server key secret | Secrets Manager in `ap-southeast-2`; select by the agreed secret name/tags, never copy the secret value into GitHub |
+| `OPENAI_SECRET_ARN` | ARN of the production/rehearsal OpenAI secret | Secrets Manager in `ap-southeast-2`; select by the agreed secret name/tags, never copy the secret value into GitHub |
+| `PASSWORD_RESET_FROM_EMAIL` | A verified SES email identity | SES **Verified identities** in `ap-southeast-2`, or `aws sesv2 list-email-identities`; a client-owned domain is deferred until after handover |
+| `PASSWORD_RESET_LINK_BASE` | First pass: invalid HTTPS placeholder; second pass: deployed API URL plus `/auth/password-reset/open` | `WmApi-prod` output `ApiBaseUrl` from the first deployment |
+| `EMAIL_VERIFICATION_LINK_BASE` | First pass: invalid HTTPS placeholder; second pass: deployed API URL plus `/auth/email-verification/open` | `WmApi-prod` output `ApiBaseUrl` from the first deployment |
+| `RESPONSE_EXPORT_LINK_BASE` | First pass: invalid HTTPS placeholder; second pass: deployed API URL plus `/response-exports` | `WmApi-prod` output `ApiBaseUrl` from the first deployment |
+| `TTS_PROVIDER` | `polly` for live audio verification, otherwise `disabled` | Release-test decision; both paths must eventually be tested |
+| `WAF_MODE` | `count` for the first rehearsal, then `block` after reviewing matches and tuning false positives | Release-test decision recorded with the deployment; never move to `block` without reviewing the redacted WAF logs |
+| `SMOKE_TEST_TTS_VOICE` | Optional `male` or `female` | Must match the current voice of the synthetic smoke account's active study; leave unset for a text-only rehearsal |
 
 Store the smoke account credentials as GitHub environment **secrets**, not
 variables:
@@ -179,13 +182,36 @@ credentials remain environment secrets and API keys remain in Secrets Manager.
 The removed `DATABASE_MIN_ACU`, `DATABASE_MAX_ACU`, and
 `DATABASE_READER_ENABLED` variables do not apply to Express Configuration.
 
+The full free-plan rehearsal sequence, including the documented load-test
+exception and the WAF count-to-block transition, is in
+[`production-deployment-rehearsal.md`](production-deployment-rehearsal.md).
+
 ## 7. Provision the Free Plan Aurora prerequisite
 
-Do this for `dev` only while validating on the Free Plan:
+Use `dev` for ordinary Free Plan validation:
 
 ```powershell
 .\scripts\provision-aurora-express.ps1 -Stage dev -Profile wm-admin
 ```
+
+For the one-off, synthetic production deployment rehearsal, first confirm that
+the account contains fewer than two Aurora clusters and that the second cluster
+fits within the remaining Free Plan credits and limits. Then use the guarded
+production path:
+
+```powershell
+.\scripts\provision-aurora-express.ps1 `
+  -Stage prod `
+  -Profile wm-admin `
+  -AllowProduction
+```
+
+This creates an Aurora PostgreSQL serverless Express cluster using the internet
+access gateway and IAM-only master authentication; connect for the one-time
+initialisation with a token generated by `aws rds generate-db-auth-token`. The
+script applies and verifies 30-day backup retention, deletion protection, Data
+API, and PostgreSQL log export. Thirty-day retention can consume credits or
+create backup-storage charges even while the account remains on the Free Plan.
 
 The script uses Express Configuration, then enables the Data API and PostgreSQL
 log export, sets one-day development backup retention, and sets the PostgreSQL

@@ -95,17 +95,18 @@ def _synthesized_log_groups(
 
 
 @pytest.mark.parametrize(
-    ("stage", "expected_policy"),
-    [("dev", "Delete"), ("prod", "Retain")],
+    ("stage", "expected_policy", "expected_count"),
+    [("dev", "Delete", 6), ("prod", "Retain", 7)],
 )
 def test_log_groups_follow_environment_removal_policy(
     monkeypatch: pytest.MonkeyPatch,
     stage: str,
     expected_policy: str,
+    expected_count: int,
 ) -> None:
     log_groups = _synthesized_log_groups(monkeypatch, stage)
 
-    assert len(log_groups) == 6
+    assert len(log_groups) == expected_count
     assert {resource["DeletionPolicy"] for resource in log_groups} == {
         expected_policy
     }

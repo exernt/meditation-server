@@ -1,9 +1,11 @@
 # AWS account handover checklist
 
-Use this checklist only after the production deployment, restore test, security
-review, and client acceptance test have passed. The account remains controlled
-by the current owner until the client confirms access from client-owned contact
-details and devices.
+Use this checklist after the synthetic production deployment rehearsal, security
+review, and client acceptance test have passed. Any restore or capacity test that
+cannot be performed safely within the Free Plan limits must be recorded as an
+explicit client-owned residual action, not marked as passed. The account remains
+controlled by the current owner until the client confirms access from
+client-owned contact details and devices.
 
 ## 1. Prepare evidence and acceptance
 
@@ -14,9 +16,12 @@ details and devices.
 - [ ] Record the AWS account ID, canonical sign-in URL, workload Region
       (`ap-southeast-2`), deployed stack names, Git commit, release identifier,
       API URL, and deployment date.
-- [ ] Client signs off functional, accessibility, security, privacy/ethics, and
-      load-test acceptance criteria.
-- [ ] Run and record an Aurora point-in-time restore and application smoke test.
+- [ ] Client signs off functional, accessibility, security and privacy/ethics
+      criteria, and accepts that the 100-active-user load test remains unverified
+      because the Lambda quota increase was rejected.
+- [ ] Run and record an Aurora point-in-time restore and application smoke test,
+      or record that the Free Plan two-cluster limit prevented a safe temporary
+      restore and assign the test to the client after handover.
 - [ ] Confirm WAF is attached to the production API and tuned out of count mode.
 - [ ] Confirm budget, forecast, DLQ, queue-age, Lambda, API, Aurora, WAF, and
       CloudTrail alarms reach a client-controlled address.
@@ -68,13 +73,15 @@ details and devices.
 ## 5. Transfer services and secrets
 
 - [ ] Client assumes ownership of Google Maps/Routes/Places/Elevation/Weather,
-      OpenAI, SES domain/DNS, support mailboxes, and Android distribution accounts.
+      OpenAI, verified SES identities, support mailboxes, and Android distribution
+      accounts. SES domain/DNS setup remains a named client post-handover action.
 - [ ] Rotate Google, OpenAI, JWT, rate-limit HMAC, and any legacy credentials after
       ownership transfer. Keep current/previous JWT keys during the controlled
       session transition.
 - [ ] Verify Secrets Manager resource policies and rotation runbooks.
-- [ ] Confirm SES production access, verified identities, DKIM, SPF, DMARC,
-      bounce/complaint handling, and support contact.
+- [ ] Confirm the rehearsal's verified SES identities and support contact. Record
+      client-owned SES domain verification, production access, DKIM, SPF/DMARC,
+      and bounce/complaint handling as post-handover actions.
 - [ ] Confirm Polly remains restricted to Australian English `Russell` and
       `Nicole` standard synthesis and can be disabled through configuration.
 
@@ -82,10 +89,9 @@ details and devices.
 
 - [ ] Client approves the personal-data inventory, processor list, privacy notice,
       retention schedule, withdrawal/deletion procedure, and incident contacts.
-- [ ] After the paid-plan transition, confirm the client-approved production
-      Aurora design has 30-day PITR, deletion protection, encrypted storage,
-      Data API, log export, and an explicit Express-versus-full-configuration
-      and reader/HA decision.
+- [ ] Confirm the rehearsal cluster reports 30-day PITR, deletion protection,
+      encrypted storage, Data API and log export. After the paid-plan transition,
+      record the client's Express-versus-full-configuration and reader/HA decision.
 - [ ] Create and label the final pre-handover snapshot; record its deletion date.
 - [ ] Confirm CloudTrail management events are delivered to the retained,
       versioned audit bucket with log-file validation.

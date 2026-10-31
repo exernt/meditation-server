@@ -237,11 +237,42 @@ if ($LASTEXITCODE -ne 0) {
     throw "Unable to apply the post-create Aurora settings."
 }
 
+aws rds wait db-cluster-available `
+    --db-cluster-identifier $clusterIdentifier `
+    --profile $Profile `
+    --region $region
+if ($LASTEXITCODE -ne 0) {
+    throw "Timed out waiting for the post-create Aurora settings to finish."
+}
+
 $cluster = (aws rds describe-db-clusters `
     --db-cluster-identifier $clusterIdentifier `
     --profile $Profile `
     --region $region `
     --output json | ConvertFrom-Json).DBClusters[0]
+if ($LASTEXITCODE -ne 0) {
+    throw "Unable to verify the post-create Aurora settings."
+}
+
+$expectedDeletionProtection = $Stage -eq "prod"
+if ([int]$cluster.BackupRetentionPeriod -ne $retentionDays) {
+    throw (
+        "Aurora backup retention verification failed: expected $retentionDays days, " +
+        "found $($cluster.BackupRetentionPeriod)."
+    )
+}
+if ([bool]$cluster.DeletionProtection -ne $expectedDeletionProtection) {
+    throw (
+        "Aurora deletion-protection verification failed: expected " +
+        "$expectedDeletionProtection, found $($cluster.DeletionProtection)."
+    )
+}
+if (-not $cluster.HttpEndpointEnabled) {
+    throw "Aurora Data API verification failed: the HTTP endpoint is not enabled."
+}
+if ($cluster.EnabledCloudwatchLogsExports -notcontains "postgresql") {
+    throw "Aurora log-export verification failed: PostgreSQL export is not enabled."
+}
 
 [pscustomobject]@{
     AccountId = $identity.Account
@@ -252,7 +283,8 @@ $cluster = (aws rds describe-db-clusters `
     MasterUsername = $cluster.MasterUsername
     DatabaseName = "walking_meditation"
     DataApiEnabled = $cluster.HttpEndpointEnabled
-    BackupRetentionDays = $retentionDays
+    BackupRetentionDays = $cluster.BackupRetentionPeriod
+    DeletionProtection = $cluster.DeletionProtection
     CloudWatchLogRetentionDays = $cloudWatchLogRetentionDays
     LoggingParameterGroup = $loggingParameterGroup
     ActiveParameterGroup = $cluster.DBClusterParameterGroup

@@ -66,6 +66,7 @@ jobs:
             -c emailVerificationLinkBase=${{ vars.EMAIL_VERIFICATION_LINK_BASE }}
             -c responseExportLinkBase=${{ vars.RESPONSE_EXPORT_LINK_BASE }}
             -c ttsProvider=${{ vars.TTS_PROVIDER }}
+            ${{ vars.WAF_MODE != '' && format('-c wafMode={0}', vars.WAF_MODE) || '' }}
       - name: Review CloudFormation change set
         run: npx cdk diff ${{ env.CDK_CONTEXT }} WmAlerting-${{ env.STAGE }} WmData-${{ env.STAGE }} WmGeneration-${{ env.STAGE }} WmExports-${{ env.STAGE }} WmApi-${{ env.STAGE }} WmOperations-${{ env.STAGE }}
         env:
@@ -84,6 +85,7 @@ jobs:
             -c emailVerificationLinkBase=${{ vars.EMAIL_VERIFICATION_LINK_BASE }}
             -c responseExportLinkBase=${{ vars.RESPONSE_EXPORT_LINK_BASE }}
             -c ttsProvider=${{ vars.TTS_PROVIDER }}
+            ${{ vars.WAF_MODE != '' && format('-c wafMode={0}', vars.WAF_MODE) || '' }}
       - name: Deploy approved stacks
         run: npx cdk deploy --require-approval never --outputs-file cdk-outputs.json ${{ env.CDK_CONTEXT }} WmAlerting-${{ env.STAGE }} WmData-${{ env.STAGE }} WmGeneration-${{ env.STAGE }} WmExports-${{ env.STAGE }} WmApi-${{ env.STAGE }} WmOperations-${{ env.STAGE }}
         env:
@@ -102,6 +104,7 @@ jobs:
             -c emailVerificationLinkBase=${{ vars.EMAIL_VERIFICATION_LINK_BASE }}
             -c responseExportLinkBase=${{ vars.RESPONSE_EXPORT_LINK_BASE }}
             -c ttsProvider=${{ vars.TTS_PROVIDER }}
+            ${{ vars.WAF_MODE != '' && format('-c wafMode={0}', vars.WAF_MODE) || '' }}
       - name: Resolve deployed API URL
         id: deployed_api
         shell: bash

@@ -48,6 +48,7 @@ def test_rejects_cluster_in_wrong_region() -> None:
 def test_polly_is_default_optional_provider() -> None:
     config = EnvironmentConfig.from_app(_app())
     assert config.tts_provider == "polly"
+    assert config.waf_mode == "count"
     assert config.region == "ap-southeast-2"
     assert config.api_reserved_concurrency is None
     assert config.operational_alert_email == "alerts@example.com"
@@ -61,6 +62,17 @@ def test_accepts_optional_api_reserved_concurrency() -> None:
 def test_requires_operational_alert_email() -> None:
     with pytest.raises(ValueError, match="operationalAlertEmail"):
         EnvironmentConfig.from_app(_app(operationalAlertEmail=None))
+
+
+def test_accepts_blocking_waf_mode() -> None:
+    config = EnvironmentConfig.from_app(_app(stage="prod", wafMode="block"))
+
+    assert config.waf_mode == "block"
+
+
+def test_rejects_invalid_waf_mode() -> None:
+    with pytest.raises(ValueError, match="wafMode must be count or block"):
+        EnvironmentConfig.from_app(_app(stage="prod", wafMode="disabled"))
 
 
 def test_accepts_api_gateway_stage_in_email_verification_link() -> None:

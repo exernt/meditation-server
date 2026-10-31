@@ -402,7 +402,7 @@ class ApiStack(Stack):
         )
 
         if config.is_production:
-            self._attach_production_waf(config)
+            self._attach_production_waf(config, alert_topic)
         else:
             NagSuppressions.add_resource_suppressions(
                 self.api.deployment_stage,
@@ -430,39 +430,129 @@ class ApiStack(Stack):
                 apply_to_children=False,
             )
 
-    def _attach_production_waf(self, config: EnvironmentConfig) -> None:
+    def _attach_production_waf(
+        self,
+        config: EnvironmentConfig,
+        alert_topic: sns.ITopic,
+    ) -> None:
+        count_mode = config.waf_mode == "count"
+        rate_rule_action = (
+            wafv2.CfnWebACL.RuleActionProperty(count={})
+            if count_mode
+            else wafv2.CfnWebACL.RuleActionProperty(block={})
+        )
+        auth_abuse_paths = (
+            "/auth/login",
+            "/auth/register",
+            "/auth/register-researcher",
+            "/auth/password-reset/request",
+            "/auth/password-reset/confirm",
+            "/auth/email-verification/resend",
+            "/auth/email-verification/confirm",
+        )
+
         web_acl = wafv2.CfnWebACL(
             self,
             "ProductionWebAcl",
             name=f"{config.prefix}-api",
             scope="REGIONAL",
             default_action=wafv2.CfnWebACL.DefaultActionProperty(allow={}),
+            association_config=wafv2.CfnWebACL.AssociationConfigProperty(
+                request_body={
+                    "API_GATEWAY": (
+                        wafv2.CfnWebACL.RequestBodyAssociatedResourceTypeConfigProperty(
+                            default_size_inspection_limit="KB_64"
+                        )
+                    )
+                }
+            ),
             visibility_config=wafv2.CfnWebACL.VisibilityConfigProperty(
                 cloud_watch_metrics_enabled=True,
                 metric_name=f"{config.prefix}-api-waf",
                 sampled_requests_enabled=False,
             ),
             rules=[
-                self._managed_rule("CommonRuleSet", "AWSManagedRulesCommonRuleSet", 10),
-                self._managed_rule("KnownBadInputs", "AWSManagedRulesKnownBadInputsRuleSet", 20),
-                self._managed_rule("IpReputation", "AWSManagedRulesAmazonIpReputationList", 30),
+                self._managed_rule(
+                    "CommonRuleSet",
+                    "AWSManagedRulesCommonRuleSet",
+                    10,
+                    count_mode=count_mode,
+                    count_overrides=("SizeRestrictions_BODY",),
+                ),
+                self._managed_rule(
+                    "KnownBadInputs",
+                    "AWSManagedRulesKnownBadInputsRuleSet",
+                    20,
+                    count_mode=count_mode,
+                ),
+                self._managed_rule(
+                    "IpReputation",
+                    "AWSManagedRulesAmazonIpReputationList",
+                    30,
+                    count_mode=count_mode,
+                ),
+                wafv2.CfnWebACL.RuleProperty(
+                    name="RequestBodySizeLimit",
+                    priority=35,
+                    action=rate_rule_action,
+                    statement=wafv2.CfnWebACL.StatementProperty(
+                        size_constraint_statement=(
+                            wafv2.CfnWebACL.SizeConstraintStatementProperty(
+                                comparison_operator="GT",
+                                field_to_match=wafv2.CfnWebACL.FieldToMatchProperty(
+                                    body=wafv2.CfnWebACL.BodyProperty(
+                                        oversize_handling="MATCH"
+                                    )
+                                ),
+                                size=65_536,
+                                text_transformations=[
+                                    wafv2.CfnWebACL.TextTransformationProperty(
+                                        priority=0,
+                                        type="NONE",
+                                    )
+                                ],
+                            )
+                        )
+                    ),
+                    visibility_config=wafv2.CfnWebACL.VisibilityConfigProperty(
+                        cloud_watch_metrics_enabled=True,
+                        metric_name=f"{config.prefix}-body-size",
+                        sampled_requests_enabled=False,
+                    ),
+                ),
                 wafv2.CfnWebACL.RuleProperty(
                     name="AuthRateLimit",
                     priority=40,
-                    action=wafv2.CfnWebACL.RuleActionProperty(block={}),
+                    action=rate_rule_action,
                     statement=wafv2.CfnWebACL.StatementProperty(
                         rate_based_statement=wafv2.CfnWebACL.RateBasedStatementProperty(
                             aggregate_key_type="IP",
                             limit=100,
                             evaluation_window_sec=300,
                             scope_down_statement=wafv2.CfnWebACL.StatementProperty(
-                                byte_match_statement=wafv2.CfnWebACL.ByteMatchStatementProperty(
-                                    field_to_match=wafv2.CfnWebACL.FieldToMatchProperty(uri_path={}),
-                                    positional_constraint="STARTS_WITH",
-                                    search_string="/auth/",
-                                    text_transformations=[
-                                        wafv2.CfnWebACL.TextTransformationProperty(priority=0, type="NONE")
-                                    ],
+                                or_statement=wafv2.CfnWebACL.OrStatementProperty(
+                                    statements=[
+                                        wafv2.CfnWebACL.StatementProperty(
+                                            byte_match_statement=(
+                                                wafv2.CfnWebACL.ByteMatchStatementProperty(
+                                                    field_to_match=(
+                                                        wafv2.CfnWebACL.FieldToMatchProperty(
+                                                            uri_path={}
+                                                        )
+                                                    ),
+                                                    positional_constraint="EXACTLY",
+                                                    search_string=path,
+                                                    text_transformations=[
+                                                        wafv2.CfnWebACL.TextTransformationProperty(
+                                                            priority=0,
+                                                            type="NONE",
+                                                        )
+                                                    ],
+                                                )
+                                            )
+                                        )
+                                        for path in auth_abuse_paths
+                                    ]
                                 )
                             ),
                         )
@@ -473,7 +563,59 @@ class ApiStack(Stack):
                         sampled_requests_enabled=False,
                     ),
                 ),
+                wafv2.CfnWebACL.RuleProperty(
+                    name="ApiRateLimit",
+                    priority=50,
+                    action=rate_rule_action,
+                    statement=wafv2.CfnWebACL.StatementProperty(
+                        rate_based_statement=wafv2.CfnWebACL.RateBasedStatementProperty(
+                            aggregate_key_type="IP",
+                            limit=3_000,
+                            evaluation_window_sec=300,
+                        )
+                    ),
+                    visibility_config=wafv2.CfnWebACL.VisibilityConfigProperty(
+                        cloud_watch_metrics_enabled=True,
+                        metric_name=f"{config.prefix}-api-rate",
+                        sampled_requests_enabled=False,
+                    ),
+                ),
             ],
+        )
+        waf_log_group = logs.LogGroup(
+            self,
+            "WafTrafficLogs",
+            log_group_name=f"aws-waf-logs-{config.prefix}-api",
+            retention=logs.RetentionDays.ONE_MONTH,
+            removal_policy=RemovalPolicy.RETAIN,
+        )
+        wafv2.CfnLoggingConfiguration(
+            self,
+            "WafLoggingConfiguration",
+            resource_arn=web_acl.attr_arn,
+            log_destination_configs=[waf_log_group.log_group_arn],
+            redacted_fields=[
+                wafv2.CfnLoggingConfiguration.FieldToMatchProperty(
+                    single_header={"Name": "authorization"}
+                ),
+                wafv2.CfnLoggingConfiguration.FieldToMatchProperty(
+                    single_header={"Name": "cookie"}
+                ),
+                wafv2.CfnLoggingConfiguration.FieldToMatchProperty(query_string={}),
+            ],
+            logging_filter={
+                "DefaultBehavior": "DROP",
+                "Filters": [
+                    {
+                        "Behavior": "KEEP",
+                        "Requirement": "MEETS_ANY",
+                        "Conditions": [
+                            {"ActionCondition": {"Action": action}}
+                        ],
+                    }
+                    for action in ("BLOCK", "COUNT")
+                ],
+            },
         )
         wafv2.CfnWebACLAssociation(
             self,
@@ -485,16 +627,65 @@ class ApiStack(Stack):
             web_acl_arn=web_acl.attr_arn,
         )
 
+        metric_name = "CountedRequests" if count_mode else "BlockedRequests"
+        metric_dimensions = {
+            "WebACL": f"{config.prefix}-api-waf",
+            "Rule": "ALL",
+            "Region": config.region,
+        }
+        waf_matches_alarm = cloudwatch.Alarm(
+            self,
+            "WafMatchesAlarm",
+            alarm_name=f"{config.prefix}-waf-{config.waf_mode}-matches",
+            alarm_description=(
+                f"AWS WAF recorded at least 25 {config.waf_mode} matches in five "
+                "minutes. Inspect the redacted WAF traffic logs before changing rules."
+            ),
+            metric=cloudwatch.Metric(
+                namespace="AWS/WAFV2",
+                metric_name=metric_name,
+                dimensions_map=metric_dimensions,
+                statistic="Sum",
+                period=Duration.minutes(5),
+            ),
+            threshold=25,
+            evaluation_periods=1,
+            comparison_operator=(
+                cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD
+            ),
+            treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING,
+        )
+        waf_matches_alarm.add_alarm_action(cloudwatch_actions.SnsAction(alert_topic))
+        waf_matches_alarm.add_ok_action(cloudwatch_actions.SnsAction(alert_topic))
+
     @staticmethod
-    def _managed_rule(name: str, managed_name: str, priority: int) -> wafv2.CfnWebACL.RuleProperty:
+    def _managed_rule(
+        name: str,
+        managed_name: str,
+        priority: int,
+        *,
+        count_mode: bool,
+        count_overrides: tuple[str, ...] = (),
+    ) -> wafv2.CfnWebACL.RuleProperty:
         return wafv2.CfnWebACL.RuleProperty(
             name=name,
             priority=priority,
-            override_action=wafv2.CfnWebACL.OverrideActionProperty(none={}),
+            override_action=(
+                wafv2.CfnWebACL.OverrideActionProperty(count={})
+                if count_mode
+                else wafv2.CfnWebACL.OverrideActionProperty(none={})
+            ),
             statement=wafv2.CfnWebACL.StatementProperty(
                 managed_rule_group_statement=wafv2.CfnWebACL.ManagedRuleGroupStatementProperty(
                     vendor_name="AWS",
                     name=managed_name,
+                    rule_action_overrides=[
+                        wafv2.CfnWebACL.RuleActionOverrideProperty(
+                            name=rule_name,
+                            action_to_use=wafv2.CfnWebACL.RuleActionProperty(count={}),
+                        )
+                        for rule_name in count_overrides
+                    ],
                 )
             ),
             visibility_config=wafv2.CfnWebACL.VisibilityConfigProperty(
