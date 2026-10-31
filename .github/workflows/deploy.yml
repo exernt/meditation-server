@@ -58,6 +58,7 @@ jobs:
             -c workerMaxConcurrency=${{ vars.WORKER_MAX_CONCURRENCY }}
             -c monthlyBudgetUsd=${{ vars.MONTHLY_BUDGET_USD }}
             -c budgetAlertEmail=${{ vars.BUDGET_ALERT_EMAIL }}
+            -c operationalAlertEmail=${{ vars.OPERATIONAL_ALERT_EMAIL }}
             -c googleMapsSecretArn=${{ vars.GOOGLE_MAPS_SECRET_ARN }}
             -c openAiSecretArn=${{ vars.OPENAI_SECRET_ARN }}
             -c passwordResetFromEmail=${{ vars.PASSWORD_RESET_FROM_EMAIL }}
@@ -66,7 +67,7 @@ jobs:
             -c responseExportLinkBase=${{ vars.RESPONSE_EXPORT_LINK_BASE }}
             -c ttsProvider=${{ vars.TTS_PROVIDER }}
       - name: Review CloudFormation change set
-        run: npx cdk diff ${{ env.CDK_CONTEXT }} WmData-${{ env.STAGE }} WmGeneration-${{ env.STAGE }} WmExports-${{ env.STAGE }} WmApi-${{ env.STAGE }} WmOperations-${{ env.STAGE }}
+        run: npx cdk diff ${{ env.CDK_CONTEXT }} WmAlerting-${{ env.STAGE }} WmData-${{ env.STAGE }} WmGeneration-${{ env.STAGE }} WmExports-${{ env.STAGE }} WmApi-${{ env.STAGE }} WmOperations-${{ env.STAGE }}
         env:
           CDK_CONTEXT: >-
             -c stage=${{ env.STAGE }}
@@ -75,6 +76,7 @@ jobs:
             -c workerMaxConcurrency=${{ vars.WORKER_MAX_CONCURRENCY }}
             -c monthlyBudgetUsd=${{ vars.MONTHLY_BUDGET_USD }}
             -c budgetAlertEmail=${{ vars.BUDGET_ALERT_EMAIL }}
+            -c operationalAlertEmail=${{ vars.OPERATIONAL_ALERT_EMAIL }}
             -c googleMapsSecretArn=${{ vars.GOOGLE_MAPS_SECRET_ARN }}
             -c openAiSecretArn=${{ vars.OPENAI_SECRET_ARN }}
             -c passwordResetFromEmail=${{ vars.PASSWORD_RESET_FROM_EMAIL }}
@@ -83,7 +85,7 @@ jobs:
             -c responseExportLinkBase=${{ vars.RESPONSE_EXPORT_LINK_BASE }}
             -c ttsProvider=${{ vars.TTS_PROVIDER }}
       - name: Deploy approved stacks
-        run: npx cdk deploy --require-approval never ${{ env.CDK_CONTEXT }} WmData-${{ env.STAGE }} WmGeneration-${{ env.STAGE }} WmExports-${{ env.STAGE }} WmApi-${{ env.STAGE }} WmOperations-${{ env.STAGE }}
+        run: npx cdk deploy --require-approval never ${{ env.CDK_CONTEXT }} WmAlerting-${{ env.STAGE }} WmData-${{ env.STAGE }} WmGeneration-${{ env.STAGE }} WmExports-${{ env.STAGE }} WmApi-${{ env.STAGE }} WmOperations-${{ env.STAGE }}
         env:
           CDK_CONTEXT: >-
             -c stage=${{ env.STAGE }}
@@ -92,6 +94,7 @@ jobs:
             -c workerMaxConcurrency=${{ vars.WORKER_MAX_CONCURRENCY }}
             -c monthlyBudgetUsd=${{ vars.MONTHLY_BUDGET_USD }}
             -c budgetAlertEmail=${{ vars.BUDGET_ALERT_EMAIL }}
+            -c operationalAlertEmail=${{ vars.OPERATIONAL_ALERT_EMAIL }}
             -c googleMapsSecretArn=${{ vars.GOOGLE_MAPS_SECRET_ARN }}
             -c openAiSecretArn=${{ vars.OPENAI_SECRET_ARN }}
             -c passwordResetFromEmail=${{ vars.PASSWORD_RESET_FROM_EMAIL }}

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from aws_cdk import BundlingOptions, CfnOutput, Duration, RemovalPolicy, Stack
 from aws_cdk import aws_cloudwatch as cloudwatch
+from aws_cdk import aws_cloudwatch_actions as cloudwatch_actions
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_lambda as lambda_
 from aws_cdk import aws_lambda_event_sources as event_sources
@@ -12,6 +13,7 @@ from aws_cdk import aws_logs as logs
 from aws_cdk import aws_s3 as s3
 from aws_cdk import aws_scheduler as scheduler
 from aws_cdk import aws_sqs as sqs
+from aws_cdk import aws_sns as sns
 from cdk_nag import NagSuppressions
 from constructs import Construct
 
@@ -29,6 +31,7 @@ class ExportStack(Stack):
         *,
         config: EnvironmentConfig,
         data_stack: DataStack,
+        alert_topic: sns.ITopic,
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -263,30 +266,50 @@ class ExportStack(Stack):
             ),
         )
 
-        cloudwatch.Alarm(
+        def notify_on_alarm_and_recovery(alarm: cloudwatch.Alarm) -> None:
+            action = cloudwatch_actions.SnsAction(alert_topic)
+            alarm.add_alarm_action(action)
+            alarm.add_ok_action(action)
+
+        dead_letter_alarm = cloudwatch.Alarm(
             self,
             "ResponseExportDeadLetterQueueAlarm",
             alarm_name=f"{config.prefix}-response-exports-dlq-not-empty",
+            alarm_description=(
+                "Response-export messages exhausted processing retries. Inspect the "
+                "worker logs and DLQ before a controlled redrive; see docs/response-exports.md."
+            ),
             metric=self.dead_letter_queue.metric_approximate_number_of_messages_visible(),
             threshold=1,
             evaluation_periods=1,
         )
-        cloudwatch.Alarm(
+        notify_on_alarm_and_recovery(dead_letter_alarm)
+        oldest_message_alarm = cloudwatch.Alarm(
             self,
             "ResponseExportOldestMessageAlarm",
             alarm_name=f"{config.prefix}-response-export-message-age",
+            alarm_description=(
+                "Response-export work has remained queued for more than five minutes. "
+                "Inspect worker concurrency, errors, and downstream dependencies."
+            ),
             metric=self.queue.metric_approximate_age_of_oldest_message(),
             threshold=300,
             evaluation_periods=2,
         )
-        cloudwatch.Alarm(
+        notify_on_alarm_and_recovery(oldest_message_alarm)
+        worker_errors_alarm = cloudwatch.Alarm(
             self,
             "ResponseExportWorkerErrorsAlarm",
             alarm_name=f"{config.prefix}-response-export-worker-errors",
+            alarm_description=(
+                "The response-export worker returned an error. Inspect its Lambda logs, "
+                "the export job status, S3, and SES delivery."
+            ),
             metric=self.worker.metric_errors(),
             threshold=1,
             evaluation_periods=1,
         )
+        notify_on_alarm_and_recovery(worker_errors_alarm)
 
         CfnOutput(
             self,

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from aws_cdk import BundlingOptions, CfnOutput, Duration, RemovalPolicy, Stack
 from aws_cdk import aws_cloudwatch as cloudwatch
+from aws_cdk import aws_cloudwatch_actions as cloudwatch_actions
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_lambda as lambda_
 from aws_cdk import aws_lambda_event_sources as event_sources
@@ -13,6 +14,7 @@ from aws_cdk import aws_scheduler as scheduler
 from aws_cdk import aws_secretsmanager as secretsmanager
 from aws_cdk import aws_s3 as s3
 from aws_cdk import aws_sqs as sqs
+from aws_cdk import aws_sns as sns
 from cdk_nag import NagSuppressions
 from constructs import Construct
 
@@ -30,6 +32,7 @@ class GenerationStack(Stack):
         *,
         config: EnvironmentConfig,
         data_stack: DataStack,
+        alert_topic: sns.ITopic,
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -354,36 +357,61 @@ class GenerationStack(Stack):
             ),
         )
 
-        cloudwatch.Alarm(
+        def notify_on_alarm_and_recovery(alarm: cloudwatch.Alarm) -> None:
+            action = cloudwatch_actions.SnsAction(alert_topic)
+            alarm.add_alarm_action(action)
+            alarm.add_ok_action(action)
+
+        dead_letter_alarm = cloudwatch.Alarm(
             self,
             "DeadLetterQueueAlarm",
             alarm_name=f"{config.prefix}-generation-dlq-not-empty",
+            alarm_description=(
+                "Generation messages exhausted processing retries. Inspect the worker "
+                "logs and DLQ before a controlled redrive; see docs/generation-jobs.md."
+            ),
             metric=self.dead_letter_queue.metric_approximate_number_of_messages_visible(),
             threshold=1,
             evaluation_periods=1,
         )
-        cloudwatch.Alarm(
+        notify_on_alarm_and_recovery(dead_letter_alarm)
+        scheduler_dead_letter_alarm = cloudwatch.Alarm(
             self,
             "SchedulerDeadLetterQueueAlarm",
             alarm_name=f"{config.prefix}-generation-maintenance-dlq-not-empty",
+            alarm_description=(
+                "A scheduled generation-maintenance invocation exhausted its retries. "
+                "Inspect the scheduler DLQ and maintenance logs."
+            ),
             metric=scheduler_dlq.metric_approximate_number_of_messages_visible(),
             threshold=1,
             evaluation_periods=1,
         )
-        cloudwatch.Alarm(
+        notify_on_alarm_and_recovery(scheduler_dead_letter_alarm)
+        oldest_message_alarm = cloudwatch.Alarm(
             self,
             "OldestMessageAlarm",
             alarm_name=f"{config.prefix}-generation-message-age",
+            alarm_description=(
+                "Generation work has remained queued for more than five minutes. "
+                "Inspect worker concurrency, errors, and downstream dependencies."
+            ),
             metric=self.queue.metric_approximate_age_of_oldest_message(),
             threshold=300,
             evaluation_periods=2,
         )
-        cloudwatch.Alarm(
+        notify_on_alarm_and_recovery(oldest_message_alarm)
+        maintenance_errors_alarm = cloudwatch.Alarm(
             self,
             "MaintenanceErrorsAlarm",
             alarm_name=f"{config.prefix}-generation-maintenance-errors",
+            alarm_description=(
+                "Generation maintenance failed. Inspect the maintenance Lambda logs and "
+                "verify outbox recovery is still publishing queued jobs."
+            ),
             metric=self.maintenance.metric_errors(),
             threshold=1,
             evaluation_periods=1,
         )
+        notify_on_alarm_and_recovery(maintenance_errors_alarm)
 

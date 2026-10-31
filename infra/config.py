@@ -47,6 +47,7 @@ class EnvironmentConfig:
     worker_max_concurrency: int
     monthly_budget_usd: float
     budget_alert_email: str
+    operational_alert_email: str
     google_maps_secret_arn: str
     openai_secret_arn: str
     password_reset_from_email: str
@@ -144,6 +145,9 @@ class EnvironmentConfig:
             worker_max_concurrency=int(_number(app, "workerMaxConcurrency")),
             monthly_budget_usd=_number(app, "monthlyBudgetUsd"),
             budget_alert_email=str(_required(app, "budgetAlertEmail")).strip(),
+            operational_alert_email=str(
+                _required(app, "operationalAlertEmail")
+            ).strip(),
             google_maps_secret_arn=str(_required(app, "googleMapsSecretArn")).strip(),
             openai_secret_arn=str(_required(app, "openAiSecretArn")).strip(),
             password_reset_from_email=str(_required(app, "passwordResetFromEmail")).strip(),

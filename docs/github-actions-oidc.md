@@ -143,7 +143,8 @@ Configure these variables separately in each environment:
 | `API_RESERVED_CONCURRENCY` | Optional API ceiling; leave unset while the account concurrency quota is 10 |
 | `WORKER_MAX_CONCURRENCY` | SQS event-source maximum concurrency |
 | `MONTHLY_BUDGET_USD` | Approved monthly budget |
-| `BUDGET_ALERT_EMAIL` | Maintained operational address |
+| `BUDGET_ALERT_EMAIL` | Address for budget and forecast notifications |
+| `OPERATIONAL_ALERT_EMAIL` | Client-controlled address for workload ALARM and recovery notifications |
 | `GOOGLE_MAPS_SECRET_ARN` | Existing Secrets Manager ARN; API and generation worker |
 | `OPENAI_SECRET_ARN` | Existing Secrets Manager ARN; worker only |
 | `PASSWORD_RESET_FROM_EMAIL` | Verified SES sender |
@@ -198,6 +199,7 @@ npx cdk deploy WmData-dev --profile wm-admin --require-approval broadening `
   -c workerMaxConcurrency=2 `
   -c monthlyBudgetUsd=20 `
   -c budgetAlertEmail=TEAM_EMAIL `
+  -c operationalAlertEmail=OPERATIONAL_TEAM_EMAIL `
   -c googleMapsSecretArn=GOOGLE_SECRET_ARN `
   -c openAiSecretArn=OPENAI_SECRET_ARN `
   -c passwordResetFromEmail=VERIFIED_SES_EMAIL `

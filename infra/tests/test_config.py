@@ -14,6 +14,7 @@ def _app(**values: object) -> cdk.App:
         "workerMaxConcurrency": 2,
         "monthlyBudgetUsd": 20,
         "budgetAlertEmail": "ops@example.com",
+        "operationalAlertEmail": "alerts@example.com",
         "googleMapsSecretArn": "arn:aws:secretsmanager:ap-southeast-2:111111111111:secret:google",
         "openAiSecretArn": "arn:aws:secretsmanager:ap-southeast-2:111111111111:secret:openai",
         "passwordResetFromEmail": "no-reply@example.com",
@@ -49,11 +50,17 @@ def test_polly_is_default_optional_provider() -> None:
     assert config.tts_provider == "polly"
     assert config.region == "ap-southeast-2"
     assert config.api_reserved_concurrency is None
+    assert config.operational_alert_email == "alerts@example.com"
 
 
 def test_accepts_optional_api_reserved_concurrency() -> None:
     config = EnvironmentConfig.from_app(_app(apiReservedConcurrency=5))
     assert config.api_reserved_concurrency == 5
+
+
+def test_requires_operational_alert_email() -> None:
+    with pytest.raises(ValueError, match="operationalAlertEmail"):
+        EnvironmentConfig.from_app(_app(operationalAlertEmail=None))
 
 
 def test_accepts_api_gateway_stage_in_email_verification_link() -> None:

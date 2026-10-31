@@ -13,6 +13,7 @@ from aws_cdk import aws_iam as iam
 from cdk_nag import AwsSolutionsChecks
 
 from infra.config import EnvironmentConfig
+from infra.stacks.alerting_stack import AlertingStack
 from infra.stacks.api_stack import ApiStack
 from infra.stacks.data_stack import DataStack
 from infra.stacks.export_stack import ExportStack
@@ -45,6 +46,12 @@ stacks: list[cdk.Stack] = [identity]
 stage = app.node.try_get_context("stage")
 if stage is not None:
     config = EnvironmentConfig.from_app(app)
+    alerting = AlertingStack(
+        app,
+        f"WmAlerting-{config.stage}",
+        config=config,
+        env=environment,
+    )
     data = DataStack(
         app,
         f"WmData-{config.stage}",
@@ -57,6 +64,7 @@ if stage is not None:
         f"WmGeneration-{config.stage}",
         config=config,
         data_stack=data,
+        alert_topic=alerting.topic,
         env=environment,
     )
     exports = ExportStack(
@@ -64,6 +72,7 @@ if stage is not None:
         f"WmExports-{config.stage}",
         config=config,
         data_stack=data,
+        alert_topic=alerting.topic,
         env=environment,
     )
     api = ApiStack(
@@ -82,7 +91,7 @@ if stage is not None:
         export_stack=exports,
         env=environment,
     )
-    stacks.extend((data, generation, exports, api, operations))
+    stacks.extend((alerting, data, generation, exports, api, operations))
 
 for stack in stacks:
     boundary = iam.ManagedPolicy.from_managed_policy_name(

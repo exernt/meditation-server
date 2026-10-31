@@ -5,6 +5,7 @@ from aws_cdk import assertions
 from aws_cdk import aws_lambda as lambda_
 
 from infra.config import EnvironmentConfig
+from infra.stacks.alerting_stack import AlertingStack
 from infra.stacks.api_stack import ApiStack
 from infra.stacks.data_stack import DataStack
 from infra.stacks.export_stack import ExportStack
@@ -25,6 +26,7 @@ def test_api_lambda_receives_password_reset_link_base(monkeypatch) -> None:
         "workerMaxConcurrency": 2,
         "monthlyBudgetUsd": 20,
         "budgetAlertEmail": "ops@example.com",
+        "operationalAlertEmail": "alerts@example.com",
         "googleMapsSecretArn": (
             "arn:aws:secretsmanager:ap-southeast-2:111111111111:secret:google-AbC123"
         ),
@@ -48,14 +50,22 @@ def test_api_lambda_receives_password_reset_link_base(monkeypatch) -> None:
             )
         ),
     )
+    alerting = AlertingStack(app, "Alerting", config=config)
     data = DataStack(app, "Data", config=config)
     generation = GenerationStack(
         app,
         "Generation",
         config=config,
         data_stack=data,
+        alert_topic=alerting.topic,
     )
-    exports = ExportStack(app, "Exports", config=config, data_stack=data)
+    exports = ExportStack(
+        app,
+        "Exports",
+        config=config,
+        data_stack=data,
+        alert_topic=alerting.topic,
+    )
     api = ApiStack(
         app,
         "Api",

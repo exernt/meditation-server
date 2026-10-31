@@ -5,6 +5,7 @@ from aws_cdk import assertions
 from aws_cdk import aws_lambda as lambda_
 
 from infra.config import EnvironmentConfig
+from infra.stacks.alerting_stack import AlertingStack
 from infra.stacks.data_stack import DataStack
 from infra.stacks.export_stack import ExportStack
 
@@ -20,6 +21,7 @@ def test_export_stack_has_private_expiring_storage_and_worker(monkeypatch) -> No
             "workerMaxConcurrency": 2,
             "monthlyBudgetUsd": 20,
             "budgetAlertEmail": "ops@example.com",
+            "operationalAlertEmail": "alerts@example.com",
             "googleMapsSecretArn": "arn:aws:secretsmanager:ap-southeast-2:111111111111:secret:google-AbC123",
             "openAiSecretArn": "arn:aws:secretsmanager:ap-southeast-2:111111111111:secret:openai-XyZ789",
             "passwordResetFromEmail": "no-reply@example.com",
@@ -38,12 +40,26 @@ def test_export_stack_has_private_expiring_storage_and_worker(monkeypatch) -> No
             )
         ),
     )
+    alerting = AlertingStack(app, "Alerting", config=config)
     data = DataStack(app, "Data", config=config)
-    exports = ExportStack(app, "Exports", config=config, data_stack=data)
+    exports = ExportStack(
+        app,
+        "Exports",
+        config=config,
+        data_stack=data,
+        alert_topic=alerting.topic,
+    )
     template = assertions.Template.from_stack(exports)
 
     template.resource_count_is("AWS::S3::Bucket", 1)
     template.resource_count_is("AWS::Scheduler::Schedule", 1)
+    template.resource_count_is("AWS::CloudWatch::Alarm", 3)
+    for alarm in template.find_resources("AWS::CloudWatch::Alarm").values():
+        alarm_actions = alarm["Properties"]["AlarmActions"]
+        ok_actions = alarm["Properties"]["OKActions"]
+        assert len(alarm_actions) == 1
+        assert ok_actions == alarm_actions
+        assert "Fn::ImportValue" in alarm_actions[0]
     template.has_resource_properties(
         "AWS::S3::Bucket",
         {

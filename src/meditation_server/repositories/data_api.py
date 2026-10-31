@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Mapping, Sequence
-from datetime import UTC, date, datetime, time
+from datetime import date, datetime, time, timezone
 from decimal import Decimal
 import json
 from typing import Any
 from uuid import UUID
 
 from .executor import DatabaseExecutor, Parameters, QueryResult, Transaction
+
+
+UTC = timezone.utc
 
 
 class RdsDataApiExecutor(DatabaseExecutor):
