@@ -5,12 +5,151 @@ param(
     [string]$Profile = "wm-admin",
     [string]$Owner = "walking-meditation-team",
     [switch]$AllowProduction,
-    [switch]$ApplyLoggingParameterGroup
+    [switch]$ApplyLoggingParameterGroup,
+    [ValidateRange(1, 35)]
+    [int]$BackupRetentionDays = 1
 )
 
 $ErrorActionPreference = "Stop"
 $region = "ap-southeast-2"
 $clusterIdentifier = "wm-$Stage-aurora-postgres"
+$script:pendingRebootWarningEmitted = $false
+
+function Invoke-AwsCliCaptured {
+    param(
+        [Parameter(Mandatory)]
+        [string[]]$AwsArguments
+    )
+
+    # Windows PowerShell promotes native stderr to NativeCommandError records.
+    # With the script-wide Stop preference, that can terminate the script before
+    # it can inspect aws.exe's exit code and report the actual AWS response.
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        $output = @(& aws @AwsArguments 2>&1)
+        $exitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+
+    return [pscustomobject]@{
+        ExitCode = $exitCode
+        Output = @($output | ForEach-Object { $_.ToString() })
+    }
+}
+
+function Get-AuroraClusterState {
+    $clusterJson = aws rds describe-db-clusters `
+        --db-cluster-identifier $clusterIdentifier `
+        --profile $Profile `
+        --region $region `
+        --output json
+    if ($LASTEXITCODE -ne 0) {
+        throw "Unable to read Aurora cluster state while waiting for a modification."
+    }
+
+    $currentCluster = ($clusterJson | ConvertFrom-Json).DBClusters[0]
+    if (-not $currentCluster) {
+        throw "Aurora cluster '$clusterIdentifier' was not returned while waiting for a modification."
+    }
+    return $currentCluster
+}
+
+function Wait-AuroraClusterState {
+    param(
+        [string]$ExpectedParameterGroup = "",
+        [switch]$RequireDataApi,
+        [int]$ExpectedBackupRetentionDays = -1,
+        [AllowNull()]
+        [Nullable[bool]]$ExpectedDeletionProtection = $null,
+        [switch]$RequirePostgresqlLogExport,
+        [int]$MaxAttempts = 60,
+        [int]$DelaySeconds = 10
+    )
+
+    $lastCluster = $null
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        $lastCluster = Get-AuroraClusterState
+        $members = @($lastCluster.DBClusterMembers)
+        $pendingRebootMembers = @(
+            $members | Where-Object {
+                $_.DBClusterParameterGroupStatus -eq "pending-reboot"
+            }
+        )
+        $parameterGroupReady = [string]::IsNullOrWhiteSpace($ExpectedParameterGroup) -or (
+            $lastCluster.DBClusterParameterGroup -eq $ExpectedParameterGroup -and
+            $members.Count -gt 0 -and
+            @(
+                $members | Where-Object {
+                    $_.DBClusterParameterGroupStatus -notin @(
+                        "in-sync",
+                        "pending-reboot"
+                    )
+                }
+            ).Count -eq 0
+        )
+        $dataApiReady = -not $RequireDataApi -or [bool]$lastCluster.HttpEndpointEnabled
+        $backupReady = (
+            $ExpectedBackupRetentionDays -lt 0 -or
+            [int]$lastCluster.BackupRetentionPeriod -eq $ExpectedBackupRetentionDays
+        )
+        $deletionProtectionReady = (
+            $null -eq $ExpectedDeletionProtection -or
+            [bool]$lastCluster.DeletionProtection -eq [bool]$ExpectedDeletionProtection
+        )
+        $logExportReady = (
+            -not $RequirePostgresqlLogExport -or
+            $lastCluster.EnabledCloudwatchLogsExports -contains "postgresql"
+        )
+
+        if (
+            $lastCluster.Status -eq "available" -and
+            $parameterGroupReady -and
+            $dataApiReady -and
+            $backupReady -and
+            $deletionProtectionReady -and
+            $logExportReady
+        ) {
+            if (
+                $pendingRebootMembers.Count -gt 0 -and
+                -not $script:pendingRebootWarningEmitted
+            ) {
+                Write-Warning (
+                    "The Aurora cluster parameter group is attached but pending a " +
+                    "maintenance reboot on: " +
+                    ($pendingRebootMembers.DBInstanceIdentifier -join ", ") +
+                    ". Continuing with settings that do not require that reboot."
+                )
+                $script:pendingRebootWarningEmitted = $true
+            }
+            return $lastCluster
+        }
+
+        if ($attempt -lt $MaxAttempts) {
+            Write-Host (
+                "Waiting for Aurora changes to settle " +
+                "(attempt $attempt/$MaxAttempts, status=$($lastCluster.Status))..."
+            )
+            Start-Sleep -Seconds $DelaySeconds
+        }
+    }
+
+    $memberStatuses = @(
+        $lastCluster.DBClusterMembers |
+            ForEach-Object { $_.DBClusterParameterGroupStatus }
+    ) -join ","
+    throw (
+        "Timed out waiting for Aurora changes to settle. " +
+        "Status=$($lastCluster.Status); " +
+        "ParameterGroup=$($lastCluster.DBClusterParameterGroup); " +
+        "MemberParameterGroupStatuses=$memberStatuses; " +
+        "DataApiEnabled=$($lastCluster.HttpEndpointEnabled); " +
+        "BackupRetentionDays=$($lastCluster.BackupRetentionPeriod); " +
+        "DeletionProtection=$($lastCluster.DeletionProtection); " +
+        "LogExports=$($lastCluster.EnabledCloudwatchLogsExports -join ',')."
+    )
+}
 
 if ($Stage -eq "prod" -and -not $AllowProduction) {
     throw "Production provisioning requires -AllowProduction after the account and release gates are approved."
@@ -152,6 +291,9 @@ if ($LASTEXITCODE -ne 0) {
     throw "Unable to configure Aurora PostgreSQL logging parameters."
 }
 
+$requiredParameterGroup = if (
+    $cluster.DBClusterParameterGroup -eq $loggingParameterGroup
+) { $loggingParameterGroup } else { "" }
 if ($cluster.DBClusterParameterGroup -ne $loggingParameterGroup) {
     if ($clusterWasCreated) {
         aws rds modify-db-cluster `
@@ -163,6 +305,7 @@ if ($cluster.DBClusterParameterGroup -ne $loggingParameterGroup) {
         if ($LASTEXITCODE -ne 0) {
             throw "Unable to attach the PostgreSQL logging parameter group to the new cluster."
         }
+        $requiredParameterGroup = $loggingParameterGroup
     } elseif ($ApplyLoggingParameterGroup) {
         aws rds modify-db-cluster `
             --db-cluster-identifier $clusterIdentifier `
@@ -182,6 +325,9 @@ if ($cluster.DBClusterParameterGroup -ne $loggingParameterGroup) {
     }
 }
 
+$cluster = Wait-AuroraClusterState `
+    -ExpectedParameterGroup $requiredParameterGroup
+
 aws rds enable-http-endpoint `
     --resource-arn $cluster.DBClusterArn `
     --profile $Profile `
@@ -190,7 +336,11 @@ if ($LASTEXITCODE -ne 0) {
     throw "Unable to enable the RDS Data API endpoint."
 }
 
-$retentionDays = if ($Stage -eq "prod") { 30 } else { 1 }
+$cluster = Wait-AuroraClusterState `
+    -ExpectedParameterGroup $requiredParameterGroup `
+    -RequireDataApi
+
+$retentionDays = $BackupRetentionDays
 $cloudWatchLogRetentionDays = if ($Stage -eq "prod") { 90 } else { 14 }
 $postgresLogGroup = "/aws/rds/cluster/$clusterIdentifier/postgresql"
 $logGroupsJson = aws logs describe-log-groups `
@@ -224,37 +374,41 @@ if ($LASTEXITCODE -ne 0) {
     throw "Unable to configure PostgreSQL CloudWatch log retention."
 }
 
-$protectionFlag = if ($Stage -eq "prod") { "--deletion-protection" } else { "--no-deletion-protection" }
-aws rds modify-db-cluster `
-    --db-cluster-identifier $clusterIdentifier `
-    --backup-retention-period $retentionDays `
-    --cloudwatch-logs-export-configuration EnableLogTypes=postgresql `
-    $protectionFlag `
-    --apply-immediately `
-    --profile $Profile `
-    --region $region | Out-Null
-if ($LASTEXITCODE -ne 0) {
-    throw "Unable to apply the post-create Aurora settings."
-}
-
-aws rds wait db-cluster-available `
-    --db-cluster-identifier $clusterIdentifier `
-    --profile $Profile `
-    --region $region
-if ($LASTEXITCODE -ne 0) {
-    throw "Timed out waiting for the post-create Aurora settings to finish."
-}
-
-$cluster = (aws rds describe-db-clusters `
-    --db-cluster-identifier $clusterIdentifier `
-    --profile $Profile `
-    --region $region `
-    --output json | ConvertFrom-Json).DBClusters[0]
-if ($LASTEXITCODE -ne 0) {
-    throw "Unable to verify the post-create Aurora settings."
-}
-
 $expectedDeletionProtection = $Stage -eq "prod"
+$protectionFlag = if ($expectedDeletionProtection) {
+    "--deletion-protection"
+} else {
+    "--no-deletion-protection"
+}
+$postCreateModifyResult = Invoke-AwsCliCaptured -AwsArguments @(
+    "rds"
+    "modify-db-cluster"
+    "--db-cluster-identifier"
+    $clusterIdentifier
+    "--backup-retention-period"
+    $retentionDays.ToString()
+    "--cloudwatch-logs-export-configuration"
+    "EnableLogTypes=postgresql"
+    $protectionFlag
+    "--apply-immediately"
+    "--profile"
+    $Profile
+    "--region"
+    $region
+)
+if ($postCreateModifyResult.ExitCode -ne 0) {
+    throw (
+        "Unable to apply the post-create Aurora settings. AWS CLI output: " +
+        ($postCreateModifyResult.Output -join [Environment]::NewLine)
+    )
+}
+
+$cluster = Wait-AuroraClusterState `
+    -ExpectedParameterGroup $requiredParameterGroup `
+    -RequireDataApi `
+    -ExpectedBackupRetentionDays $retentionDays `
+    -ExpectedDeletionProtection $expectedDeletionProtection `
+    -RequirePostgresqlLogExport
 if ([int]$cluster.BackupRetentionPeriod -ne $retentionDays) {
     throw (
         "Aurora backup retention verification failed: expected $retentionDays days, " +

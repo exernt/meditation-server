@@ -40,8 +40,8 @@ account and quotas permit it.
    ```
 
    The script creates an Aurora PostgreSQL serverless Express cluster that uses
-   the internet access gateway and IAM-only master authentication. It must report
-   `BackupRetentionDays: 30`, `DeletionProtection: True`,
+   the internet access gateway and IAM-only master authentication. On the Free
+   Plan it must report `BackupRetentionDays: 1`, `DeletionProtection: True`,
    `DataApiEnabled: True`, and the PostgreSQL log export. Use
    `aws rds generate-db-auth-token` for the one-time administrator connection.
 5. Deploy `WmData-prod`, initialise the `wm_app` role from the generated secret,
@@ -90,7 +90,7 @@ WAF probe. Record the ACL association, rule actions, alarm state, and log group.
 Deletion protection prevents accidental cluster deletion, but it is not a
 backup. Before handover, record:
 
-- `BackupRetentionPeriod = 30` and `DeletionProtection = true` from
+- `BackupRetentionPeriod = 1` on the Free Plan and `DeletionProtection = true` from
   `describe-db-clusters`;
 - latest and earliest restorable timestamps;
 - one manual pre-handover snapshot identifier; and

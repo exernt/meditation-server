@@ -49,7 +49,7 @@ jobs:
         run: python -m pytest infra/tests -q
       - name: Synthesize and scan
         run: |
-          npx cdk synth --strict ${{ env.CDK_CONTEXT }}
+          npx cdk synth --strict $CDK_CONTEXT
         env:
           CDK_CONTEXT: >-
             -c stage=${{ env.STAGE }}
@@ -68,7 +68,7 @@ jobs:
             -c ttsProvider=${{ vars.TTS_PROVIDER }}
             ${{ vars.WAF_MODE != '' && format('-c wafMode={0}', vars.WAF_MODE) || '' }}
       - name: Review CloudFormation change set
-        run: npx cdk diff ${{ env.CDK_CONTEXT }} WmAlerting-${{ env.STAGE }} WmData-${{ env.STAGE }} WmGeneration-${{ env.STAGE }} WmExports-${{ env.STAGE }} WmApi-${{ env.STAGE }} WmOperations-${{ env.STAGE }}
+        run: npx cdk diff $CDK_CONTEXT WmAlerting-${{ env.STAGE }} WmData-${{ env.STAGE }} WmGeneration-${{ env.STAGE }} WmExports-${{ env.STAGE }} WmApi-${{ env.STAGE }} WmOperations-${{ env.STAGE }}
         env:
           CDK_CONTEXT: >-
             -c stage=${{ env.STAGE }}
@@ -87,7 +87,7 @@ jobs:
             -c ttsProvider=${{ vars.TTS_PROVIDER }}
             ${{ vars.WAF_MODE != '' && format('-c wafMode={0}', vars.WAF_MODE) || '' }}
       - name: Deploy approved stacks
-        run: npx cdk deploy --require-approval never --outputs-file cdk-outputs.json ${{ env.CDK_CONTEXT }} WmAlerting-${{ env.STAGE }} WmData-${{ env.STAGE }} WmGeneration-${{ env.STAGE }} WmExports-${{ env.STAGE }} WmApi-${{ env.STAGE }} WmOperations-${{ env.STAGE }}
+        run: npx cdk deploy --require-approval never --outputs-file cdk-outputs.json $CDK_CONTEXT WmAlerting-${{ env.STAGE }} WmData-${{ env.STAGE }} WmGeneration-${{ env.STAGE }} WmExports-${{ env.STAGE }} WmApi-${{ env.STAGE }} WmOperations-${{ env.STAGE }}
         env:
           CDK_CONTEXT: >-
             -c stage=${{ env.STAGE }}

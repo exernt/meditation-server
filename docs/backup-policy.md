@@ -9,14 +9,14 @@ point-in-time restore throughout the configured retention window.
 | Environment | Automated PITR | Manual snapshots | Restore testing |
 | --- | --- | --- | --- |
 | Development on Free Plan | 1 day | Before destructive migration only; delete after validation | Before production release |
-| Synthetic production rehearsal on Free Plan | 30 days plus deletion protection | Before destructive migrations and final account handover; retain 30 days unless the client requires longer | Before handover if the two-cluster account limit leaves room for the temporary restore; otherwise record an explicit client-owned exception |
+| Synthetic production rehearsal on Free Plan | 1 day plus deletion protection | Before destructive migrations and final account handover; retain according to the approved research-data schedule | Before handover if the two-cluster account limit leaves room for the temporary restore; otherwise record an explicit client-owned exception |
 | Production after paid-plan transition | 30 days plus deletion protection | Before destructive migrations and final account handover; retain 30 days unless the client requires longer | Monthly and before handover |
 
 Aurora continuously captures the changes needed for point-in-time recovery, so
 separate hourly transaction-log backups and daily differential backups are not
-created. Scheduled weekly snapshots inside the same 30-day window add little
-recovery value. A release or pre-migration snapshot is retained as an explicit
-operator checkpoint.
+created. After the paid-plan transition, scheduled weekly snapshots inside the
+same 30-day window add little recovery value. A release or pre-migration snapshot
+is retained as an explicit operator checkpoint.
 
 The restore objective is not satisfied until a restore has been tested. Each
 test must record source recovery point, restored cluster identifier, start/end

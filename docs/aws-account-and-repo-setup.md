@@ -42,7 +42,7 @@ Create a deployment register in the repository and agree on these values:
 | Required tags | `Application`, `Environment`, `Owner`, `ManagedBy`, `DataClassification` |
 | Data classification | `sensitive-research` for database, logs, and queues |
 | TTS | Optional Polly: `Russell`/`Nicole`, standard engine, `en-AU`; `disabled` remains supported |
-| Recovery baseline | Production 30-day PITR; development 1 day; monthly restore test |
+| Recovery baseline | Free Plan 1-day PITR; production 30-day PITR after paid-plan transition; monthly restore test |
 | Alert recipients | Maintained team/client mailbox, not one student's address |
 
 Record owners for the AWS root account, billing, security alerts, production

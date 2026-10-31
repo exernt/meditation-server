@@ -365,11 +365,12 @@ for Aurora, SQS, and logs initially. Add customer-managed KMS keys only when the
 client has an explicit key-ownership/rotation need and accepts the cost.
 
 Production data must not enter developer laptops or the development stack.
-Use Aurora Express's one-day backup retention for Free Plan development
-verification. The synthetic production rehearsal and long-lived production
-configuration use 30-day PITR plus deletion protection, including while the
-rehearsal remains on the Free Plan. Take 30-day manual snapshots before destructive
-migrations and handover, and perform a documented monthly restore test. Aurora
+Use Aurora Express's one-day backup retention for Free Plan development and
+synthetic production verification; the Free Plan rejects longer automated
+retention. Keep deletion protection enabled for the rehearsal. After moving to
+the paid plan, increase long-lived production to 30-day PITR. Take manual
+snapshots before destructive migrations and handover, retain them according to
+the backup policy, and perform a documented monthly restore test. Aurora
 already captures incremental changes continuously, so a separate weekly-full,
 daily-differential, hourly-log schedule would duplicate the service's native
 model. See [`backup-policy.md`](backup-policy.md).

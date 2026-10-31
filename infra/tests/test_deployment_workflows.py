@@ -23,6 +23,18 @@ def test_deployment_passes_alert_context_and_deploys_alerting_stack() -> None:
     assert workflow.count(alerting_stack) == 2
 
 
+def test_deployment_expands_multiline_cdk_context_in_the_shell() -> None:
+    workflow = (PROJECT_ROOT / ".github" / "workflows" / "deploy.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "${{ env.CDK_CONTEXT }}" not in workflow
+    assert workflow.count("$CDK_CONTEXT") == 3
+    assert "npx cdk synth --strict $CDK_CONTEXT" in workflow
+    assert "npx cdk diff $CDK_CONTEXT" in workflow
+    assert "cdk-outputs.json $CDK_CONTEXT" in workflow
+
+
 def test_deployment_runs_smoke_tests_with_environment_secrets() -> None:
     workflow = (PROJECT_ROOT / ".github" / "workflows" / "deploy.yml").read_text(
         encoding="utf-8"

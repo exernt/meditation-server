@@ -89,9 +89,10 @@ client-owned contact details and devices.
 
 - [ ] Client approves the personal-data inventory, processor list, privacy notice,
       retention schedule, withdrawal/deletion procedure, and incident contacts.
-- [ ] Confirm the rehearsal cluster reports 30-day PITR, deletion protection,
-      encrypted storage, Data API and log export. After the paid-plan transition,
-      record the client's Express-versus-full-configuration and reader/HA decision.
+- [ ] Confirm the Free Plan rehearsal cluster reports one-day PITR, deletion
+      protection, encrypted storage, Data API and log export. After the paid-plan
+      transition, increase PITR to 30 days and record the client's
+      Express-versus-full-configuration and reader/HA decision.
 - [ ] Create and label the final pre-handover snapshot; record its deletion date.
 - [ ] Confirm CloudTrail management events are delivered to the retained,
       versioned audit bucket with log-file validation.

@@ -44,11 +44,61 @@ def test_existing_cluster_parameter_group_change_requires_explicit_switch() -> N
     assert "--no-apply-immediately" in SCRIPT
 
 
-def test_production_backup_and_deletion_protection_are_applied_and_verified() -> None:
-    assert '$retentionDays = if ($Stage -eq "prod") { 30 } else { 1 }' in SCRIPT
-    assert '$protectionFlag = if ($Stage -eq "prod") { "--deletion-protection" }' in SCRIPT
+def test_backup_retention_defaults_to_free_plan_maximum_and_is_verified() -> None:
+    assert "[ValidateRange(1, 35)]" in SCRIPT
+    assert "[int]$BackupRetentionDays = 1" in SCRIPT
+    assert "$retentionDays = $BackupRetentionDays" in SCRIPT
     assert '$expectedDeletionProtection = $Stage -eq "prod"' in SCRIPT
+    assert "$protectionFlag = if ($expectedDeletionProtection) {" in SCRIPT
+    assert '"--deletion-protection"' in SCRIPT
+    assert '"--no-deletion-protection"' in SCRIPT
     assert "BackupRetentionPeriod -ne $retentionDays" in SCRIPT
     assert "DeletionProtection -ne $expectedDeletionProtection" in SCRIPT
     assert "BackupRetentionDays = $cluster.BackupRetentionPeriod" in SCRIPT
     assert "DeletionProtection = $cluster.DeletionProtection" in SCRIPT
+
+
+def test_serializes_post_create_cluster_modifications() -> None:
+    assert "function Wait-AuroraClusterState" in SCRIPT
+    assert 'DBClusterParameterGroupStatus -notin @(' in SCRIPT
+    assert '"in-sync",' in SCRIPT
+    assert '"pending-reboot"' in SCRIPT
+    assert "-RequireDataApi" in SCRIPT
+    assert "-RequirePostgresqlLogExport" in SCRIPT
+    assert "-ExpectedBackupRetentionDays $retentionDays" in SCRIPT
+    assert "-ExpectedDeletionProtection $expectedDeletionProtection" in SCRIPT
+
+    parameter_group_wait = SCRIPT.index(
+        "$cluster = Wait-AuroraClusterState `\n"
+        "    -ExpectedParameterGroup $requiredParameterGroup"
+    )
+    data_api_call = SCRIPT.index("aws rds enable-http-endpoint")
+    data_api_wait = SCRIPT.index(
+        "$cluster = Wait-AuroraClusterState `\n"
+        "    -ExpectedParameterGroup $requiredParameterGroup `\n"
+        "    -RequireDataApi"
+    )
+    settings_call = SCRIPT.index(
+        "$postCreateModifyResult = Invoke-AwsCliCaptured -AwsArguments @("
+    )
+    assert parameter_group_wait < data_api_call < data_api_wait < settings_call
+
+
+def test_post_create_failure_includes_aws_cli_output() -> None:
+    assert "$postCreateModifyResult = Invoke-AwsCliCaptured -AwsArguments @(" in SCRIPT
+    assert "if ($postCreateModifyResult.ExitCode -ne 0)" in SCRIPT
+    assert "$postCreateModifyResult.Output -join" in SCRIPT
+    assert "AWS CLI output:" in SCRIPT
+
+
+def test_aws_stderr_cannot_bypass_exit_code_handling() -> None:
+    assert "function Invoke-AwsCliCaptured" in SCRIPT
+    assert '$ErrorActionPreference = "Continue"' in SCRIPT
+    assert "$exitCode = $LASTEXITCODE" in SCRIPT
+    assert "$ErrorActionPreference = $previousErrorActionPreference" in SCRIPT
+
+
+def test_pending_reboot_is_reported_without_blocking_provisioning() -> None:
+    assert "$script:pendingRebootWarningEmitted = $false" in SCRIPT
+    assert "maintenance reboot" in SCRIPT
+    assert "Continuing with settings that do not require that reboot." in SCRIPT
