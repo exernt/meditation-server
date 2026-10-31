@@ -152,9 +152,31 @@ Configure these variables separately in each environment:
 | `EMAIL_VERIFICATION_LINK_BASE` | HTTPS API URL ending in `/auth/email-verification/open` |
 | `RESPONSE_EXPORT_LINK_BASE` | HTTPS API URL ending in `/response-exports` |
 | `TTS_PROVIDER` | `polly` or `disabled` |
+| `SMOKE_TEST_TTS_VOICE` | Optional `male` or `female`; enables the post-deployment Polly smoke test for an account enrolled in an active study with that configured voice |
 
-These values and ARNs are not secret contents. API keys remain in Secrets
-Manager. The removed `DATABASE_MIN_ACU`, `DATABASE_MAX_ACU`, and
+Store the smoke account credentials as GitHub environment **secrets**, not
+variables:
+
+| Secret | Meaning |
+| --- | --- |
+| `SMOKE_TEST_EMAIL` | Email of a dedicated, verified, enabled synthetic account |
+| `SMOKE_TEST_PASSWORD` | Password for that account |
+
+The deployment workflow reads the API URL from the `WmApi-{stage}` CloudFormation
+output, then checks API health, database access, login, authenticated identity,
+deterministic script generation, refresh-token rotation, and logout. If
+`SMOKE_TEST_TTS_VOICE` is set, the account must also be an active participant
+whose current study uses that voice; the suite requests a short synthetic
+narration and verifies that non-empty MP3 audio is returned. Do not use a real
+participant or researcher account.
+
+Keep the account exclusive to this workflow. A successful login intentionally
+increments its session version and revokes earlier refresh tokens, so sharing the
+account with a person or another concurrent test would invalidate their session.
+
+The configuration variables and ARNs are not secret contents; the smoke account
+credentials remain environment secrets and API keys remain in Secrets Manager.
+The removed `DATABASE_MIN_ACU`, `DATABASE_MAX_ACU`, and
 `DATABASE_READER_ENABLED` variables do not apply to Express Configuration.
 
 ## 7. Provision the Free Plan Aurora prerequisite

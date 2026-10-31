@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from aws_cdk import BundlingOptions, Duration, RemovalPolicy, Stack
+from aws_cdk import BundlingOptions, CfnOutput, Duration, RemovalPolicy, Stack
 from aws_cdk import aws_apigateway as apigateway
 from aws_cdk import aws_cloudwatch as cloudwatch
 from aws_cdk import aws_cloudwatch_actions as cloudwatch_actions
@@ -238,6 +238,13 @@ class ApiStack(Stack):
             timeout=Duration.seconds(29),
         )
         self.api.root.add_proxy(default_integration=integration, any_method=True)
+
+        CfnOutput(
+            self,
+            "ApiBaseUrl",
+            value=self.api.url,
+            description="Base URL used by clients and post-deployment smoke tests.",
+        )
 
         def notify_on_alarm_and_recovery(alarm: cloudwatch.Alarm) -> None:
             action = cloudwatch_actions.SnsAction(alert_topic)

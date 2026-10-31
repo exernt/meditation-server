@@ -21,3 +21,15 @@ def test_deployment_passes_alert_context_and_deploys_alerting_stack() -> None:
     alerting_stack = "WmAlerting-${{ env.STAGE }}"
     assert workflow.count(context) == 3
     assert workflow.count(alerting_stack) == 2
+
+
+def test_deployment_runs_smoke_tests_with_environment_secrets() -> None:
+    workflow = (PROJECT_ROOT / ".github" / "workflows" / "deploy.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "OutputKey=='ApiBaseUrl'" in workflow
+    assert "python scripts/post_deployment_smoke.py" in workflow
+    assert "SMOKE_TEST_EMAIL: ${{ secrets.SMOKE_TEST_EMAIL }}" in workflow
+    assert "SMOKE_TEST_PASSWORD: ${{ secrets.SMOKE_TEST_PASSWORD }}" in workflow
+    assert "SMOKE_TEST_TTS_VOICE: ${{ vars.SMOKE_TEST_TTS_VOICE }}" in workflow

@@ -102,4 +102,25 @@ jobs:
             -c emailVerificationLinkBase=${{ vars.EMAIL_VERIFICATION_LINK_BASE }}
             -c responseExportLinkBase=${{ vars.RESPONSE_EXPORT_LINK_BASE }}
             -c ttsProvider=${{ vars.TTS_PROVIDER }}
+      - name: Resolve deployed API URL
+        id: deployed_api
+        shell: bash
+        run: |
+          api_url="$(aws cloudformation describe-stacks \
+            --stack-name "WmApi-${STAGE}" \
+            --region ap-southeast-2 \
+            --query "Stacks[0].Outputs[?OutputKey=='ApiBaseUrl'].OutputValue | [0]" \
+            --output text)"
+          if [[ -z "$api_url" || "$api_url" == "None" ]]; then
+            echo "WmApi-${STAGE} did not expose ApiBaseUrl" >&2
+            exit 1
+          fi
+          echo "base_url=$api_url" >> "$GITHUB_OUTPUT"
+      - name: Run post-deployment smoke tests
+        run: python scripts/post_deployment_smoke.py
+        env:
+          SMOKE_BASE_URL: ${{ steps.deployed_api.outputs.base_url }}
+          SMOKE_TEST_EMAIL: ${{ secrets.SMOKE_TEST_EMAIL }}
+          SMOKE_TEST_PASSWORD: ${{ secrets.SMOKE_TEST_PASSWORD }}
+          SMOKE_TEST_TTS_VOICE: ${{ vars.SMOKE_TEST_TTS_VOICE }}
 

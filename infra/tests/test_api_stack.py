@@ -157,3 +157,9 @@ def test_api_lambda_receives_password_reset_link_base(monkeypatch) -> None:
             )
         },
     )
+    template.has_output(
+        "ApiBaseUrl",
+        {
+            "Description": "Base URL used by clients and post-deployment smoke tests.",
+        },
+    )
