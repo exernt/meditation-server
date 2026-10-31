@@ -17,22 +17,23 @@ def test_deployment_passes_alert_context_and_deploys_alerting_stack() -> None:
         encoding="utf-8"
     )
 
-    context = "-c operationalAlertEmail=${{ vars.OPERATIONAL_ALERT_EMAIL }}"
+    context = "OPERATIONAL_ALERT_EMAIL: ${{ vars.OPERATIONAL_ALERT_EMAIL }}"
     alerting_stack = "WmAlerting-${{ env.STAGE }}"
-    assert workflow.count(context) == 3
+    assert workflow.count(context) == 1
     assert workflow.count(alerting_stack) == 2
 
 
-def test_deployment_expands_multiline_cdk_context_in_the_shell() -> None:
+def test_deployment_uses_validated_process_arguments_for_cdk_context() -> None:
     workflow = (PROJECT_ROOT / ".github" / "workflows" / "deploy.yml").read_text(
         encoding="utf-8"
     )
 
-    assert "${{ env.CDK_CONTEXT }}" not in workflow
-    assert workflow.count("$CDK_CONTEXT") == 3
-    assert "npx cdk synth --strict $CDK_CONTEXT" in workflow
-    assert "npx cdk diff $CDK_CONTEXT" in workflow
-    assert "cdk-outputs.json $CDK_CONTEXT" in workflow
+    assert "CDK_CONTEXT" not in workflow
+    assert "python scripts/run_cdk_ci.py validate" in workflow
+    assert "python scripts/run_cdk_ci.py synth --strict" in workflow
+    assert "python scripts/run_cdk_ci.py diff" in workflow
+    assert "python scripts/run_cdk_ci.py deploy" in workflow
+    assert "PASSWORD_RESET_LINK_BASE: ${{ vars.PASSWORD_RESET_LINK_BASE }}" in workflow
 
 
 def test_deployment_runs_smoke_tests_with_environment_secrets() -> None:

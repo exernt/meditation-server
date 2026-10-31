@@ -25,6 +25,20 @@ jobs:
     environment: ${{ inputs.environment }}
     env:
       STAGE: ${{ inputs.environment == 'production' && 'prod' || 'dev' }}
+      DATABASE_CLUSTER_ARN: ${{ vars.DATABASE_CLUSTER_ARN }}
+      API_RESERVED_CONCURRENCY: ${{ vars.API_RESERVED_CONCURRENCY }}
+      WORKER_MAX_CONCURRENCY: ${{ vars.WORKER_MAX_CONCURRENCY }}
+      MONTHLY_BUDGET_USD: ${{ vars.MONTHLY_BUDGET_USD }}
+      BUDGET_ALERT_EMAIL: ${{ vars.BUDGET_ALERT_EMAIL }}
+      OPERATIONAL_ALERT_EMAIL: ${{ vars.OPERATIONAL_ALERT_EMAIL }}
+      GOOGLE_MAPS_SECRET_ARN: ${{ vars.GOOGLE_MAPS_SECRET_ARN }}
+      OPENAI_SECRET_ARN: ${{ vars.OPENAI_SECRET_ARN }}
+      PASSWORD_RESET_FROM_EMAIL: ${{ vars.PASSWORD_RESET_FROM_EMAIL }}
+      PASSWORD_RESET_LINK_BASE: ${{ vars.PASSWORD_RESET_LINK_BASE }}
+      EMAIL_VERIFICATION_LINK_BASE: ${{ vars.EMAIL_VERIFICATION_LINK_BASE }}
+      RESPONSE_EXPORT_LINK_BASE: ${{ vars.RESPONSE_EXPORT_LINK_BASE }}
+      TTS_PROVIDER: ${{ vars.TTS_PROVIDER }}
+      WAF_MODE: ${{ vars.WAF_MODE }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -47,64 +61,14 @@ jobs:
           role-session-name: github-${{ github.run_id }}
       - name: Test infrastructure
         run: python -m pytest infra/tests -q
+      - name: Validate deployment configuration
+        run: python scripts/run_cdk_ci.py validate
       - name: Synthesize and scan
-        run: |
-          npx cdk synth --strict $CDK_CONTEXT
-        env:
-          CDK_CONTEXT: >-
-            -c stage=${{ env.STAGE }}
-            -c databaseClusterArn=${{ vars.DATABASE_CLUSTER_ARN }}
-            ${{ vars.API_RESERVED_CONCURRENCY != '' && format('-c apiReservedConcurrency={0}', vars.API_RESERVED_CONCURRENCY) || '' }}
-            -c workerMaxConcurrency=${{ vars.WORKER_MAX_CONCURRENCY }}
-            -c monthlyBudgetUsd=${{ vars.MONTHLY_BUDGET_USD }}
-            -c budgetAlertEmail=${{ vars.BUDGET_ALERT_EMAIL }}
-            -c operationalAlertEmail=${{ vars.OPERATIONAL_ALERT_EMAIL }}
-            -c googleMapsSecretArn=${{ vars.GOOGLE_MAPS_SECRET_ARN }}
-            -c openAiSecretArn=${{ vars.OPENAI_SECRET_ARN }}
-            -c passwordResetFromEmail=${{ vars.PASSWORD_RESET_FROM_EMAIL }}
-            -c passwordResetLinkBase=${{ vars.PASSWORD_RESET_LINK_BASE }}
-            -c emailVerificationLinkBase=${{ vars.EMAIL_VERIFICATION_LINK_BASE }}
-            -c responseExportLinkBase=${{ vars.RESPONSE_EXPORT_LINK_BASE }}
-            -c ttsProvider=${{ vars.TTS_PROVIDER }}
-            ${{ vars.WAF_MODE != '' && format('-c wafMode={0}', vars.WAF_MODE) || '' }}
+        run: python scripts/run_cdk_ci.py synth --strict
       - name: Review CloudFormation change set
-        run: npx cdk diff $CDK_CONTEXT WmAlerting-${{ env.STAGE }} WmData-${{ env.STAGE }} WmGeneration-${{ env.STAGE }} WmExports-${{ env.STAGE }} WmApi-${{ env.STAGE }} WmOperations-${{ env.STAGE }}
-        env:
-          CDK_CONTEXT: >-
-            -c stage=${{ env.STAGE }}
-            -c databaseClusterArn=${{ vars.DATABASE_CLUSTER_ARN }}
-            ${{ vars.API_RESERVED_CONCURRENCY != '' && format('-c apiReservedConcurrency={0}', vars.API_RESERVED_CONCURRENCY) || '' }}
-            -c workerMaxConcurrency=${{ vars.WORKER_MAX_CONCURRENCY }}
-            -c monthlyBudgetUsd=${{ vars.MONTHLY_BUDGET_USD }}
-            -c budgetAlertEmail=${{ vars.BUDGET_ALERT_EMAIL }}
-            -c operationalAlertEmail=${{ vars.OPERATIONAL_ALERT_EMAIL }}
-            -c googleMapsSecretArn=${{ vars.GOOGLE_MAPS_SECRET_ARN }}
-            -c openAiSecretArn=${{ vars.OPENAI_SECRET_ARN }}
-            -c passwordResetFromEmail=${{ vars.PASSWORD_RESET_FROM_EMAIL }}
-            -c passwordResetLinkBase=${{ vars.PASSWORD_RESET_LINK_BASE }}
-            -c emailVerificationLinkBase=${{ vars.EMAIL_VERIFICATION_LINK_BASE }}
-            -c responseExportLinkBase=${{ vars.RESPONSE_EXPORT_LINK_BASE }}
-            -c ttsProvider=${{ vars.TTS_PROVIDER }}
-            ${{ vars.WAF_MODE != '' && format('-c wafMode={0}', vars.WAF_MODE) || '' }}
+        run: python scripts/run_cdk_ci.py diff WmAlerting-${{ env.STAGE }} WmData-${{ env.STAGE }} WmGeneration-${{ env.STAGE }} WmExports-${{ env.STAGE }} WmApi-${{ env.STAGE }} WmOperations-${{ env.STAGE }}
       - name: Deploy approved stacks
-        run: npx cdk deploy --require-approval never --outputs-file cdk-outputs.json $CDK_CONTEXT WmAlerting-${{ env.STAGE }} WmData-${{ env.STAGE }} WmGeneration-${{ env.STAGE }} WmExports-${{ env.STAGE }} WmApi-${{ env.STAGE }} WmOperations-${{ env.STAGE }}
-        env:
-          CDK_CONTEXT: >-
-            -c stage=${{ env.STAGE }}
-            -c databaseClusterArn=${{ vars.DATABASE_CLUSTER_ARN }}
-            ${{ vars.API_RESERVED_CONCURRENCY != '' && format('-c apiReservedConcurrency={0}', vars.API_RESERVED_CONCURRENCY) || '' }}
-            -c workerMaxConcurrency=${{ vars.WORKER_MAX_CONCURRENCY }}
-            -c monthlyBudgetUsd=${{ vars.MONTHLY_BUDGET_USD }}
-            -c budgetAlertEmail=${{ vars.BUDGET_ALERT_EMAIL }}
-            -c operationalAlertEmail=${{ vars.OPERATIONAL_ALERT_EMAIL }}
-            -c googleMapsSecretArn=${{ vars.GOOGLE_MAPS_SECRET_ARN }}
-            -c openAiSecretArn=${{ vars.OPENAI_SECRET_ARN }}
-            -c passwordResetFromEmail=${{ vars.PASSWORD_RESET_FROM_EMAIL }}
-            -c passwordResetLinkBase=${{ vars.PASSWORD_RESET_LINK_BASE }}
-            -c emailVerificationLinkBase=${{ vars.EMAIL_VERIFICATION_LINK_BASE }}
-            -c responseExportLinkBase=${{ vars.RESPONSE_EXPORT_LINK_BASE }}
-            -c ttsProvider=${{ vars.TTS_PROVIDER }}
-            ${{ vars.WAF_MODE != '' && format('-c wafMode={0}', vars.WAF_MODE) || '' }}
+        run: python scripts/run_cdk_ci.py deploy --require-approval never --outputs-file cdk-outputs.json WmAlerting-${{ env.STAGE }} WmData-${{ env.STAGE }} WmGeneration-${{ env.STAGE }} WmExports-${{ env.STAGE }} WmApi-${{ env.STAGE }} WmOperations-${{ env.STAGE }}
       - name: Resolve deployed API URL
         id: deployed_api
         shell: bash
