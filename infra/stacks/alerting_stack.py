@@ -38,6 +38,26 @@ class AlertingStack(Stack):
                 conditions={"Bool": {"aws:SecureTransport": "false"}},
             )
         )
+        self.topic.add_to_resource_policy(
+            iam.PolicyStatement(
+                sid="AllowCloudWatchAlarmsToPublish",
+                effect=iam.Effect.ALLOW,
+                principals=[iam.ServicePrincipal("cloudwatch.amazonaws.com")],
+                actions=["sns:Publish"],
+                resources=[self.topic.topic_arn],
+                conditions={
+                    "ArnLike": {
+                        "aws:SourceArn": (
+                            f"arn:{self.partition}:cloudwatch:"
+                            f"{self.region}:{self.account}:alarm:{config.prefix}-*"
+                        )
+                    },
+                    "StringEquals": {
+                        "aws:SourceAccount": self.account,
+                    },
+                },
+            )
+        )
         self.topic.add_subscription(
             subscriptions.EmailSubscription(config.operational_alert_email)
         )
