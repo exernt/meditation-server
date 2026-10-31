@@ -4,7 +4,8 @@ param(
     [string]$Stage = "dev",
     [string]$Profile = "wm-admin",
     [string]$Owner = "walking-meditation-team",
-    [switch]$AllowProduction
+    [switch]$AllowProduction,
+    [switch]$ApplyLoggingParameterGroup
 )
 
 $ErrorActionPreference = "Stop"
@@ -44,6 +45,7 @@ $clusters = $clustersJson | ConvertFrom-Json
 $clusterExists = @(
     $clusters.DBClusters | Where-Object { $_.DBClusterIdentifier -eq $clusterIdentifier }
 ).Count -gt 0
+$clusterWasCreated = -not $clusterExists
 
 if (-not $clusterExists) {
     Write-Host "Creating Aurora PostgreSQL cluster '$clusterIdentifier' with Express Configuration..."
@@ -85,6 +87,101 @@ if ($LASTEXITCODE -ne 0) {
     throw "Unable to read Aurora cluster details."
 }
 
+$engineMajor = [int](($cluster.EngineVersion -split "\.")[0])
+$parameterGroupFamily = "aurora-postgresql$engineMajor"
+$loggingParameterGroup = "wm-$Stage-aurora-postgres-$engineMajor-logging"
+$slowQueryMilliseconds = if ($Stage -eq "prod") { 1000 } else { 500 }
+
+$parameterGroupsJson = aws rds describe-db-cluster-parameter-groups `
+    --profile $Profile `
+    --region $region `
+    --output json
+if ($LASTEXITCODE -ne 0) {
+    throw "Unable to inspect Aurora PostgreSQL cluster parameter groups."
+}
+$parameterGroups = $parameterGroupsJson | ConvertFrom-Json
+$matchingParameterGroup = @(
+    $parameterGroups.DBClusterParameterGroups |
+        Where-Object { $_.DBClusterParameterGroupName -eq $loggingParameterGroup }
+) | Select-Object -First 1
+if (-not $matchingParameterGroup) {
+    Write-Host "Creating Aurora PostgreSQL logging parameter group '$loggingParameterGroup'..."
+    aws rds create-db-cluster-parameter-group `
+        --db-cluster-parameter-group-name $loggingParameterGroup `
+        --db-parameter-group-family $parameterGroupFamily `
+        --description "Walking Meditation $Stage privacy-preserving PostgreSQL logging" `
+        --profile $Profile `
+        --region $region `
+        --tags `
+            Key=Project,Value=WalkingMeditation `
+            Key=Environment,Value=$Stage `
+            Key=DataClassification,Value=SensitiveResearch `
+            Key=ManagedBy,Value=ExternalPrerequisite | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Unable to create Aurora PostgreSQL logging parameter group."
+    }
+} elseif ($matchingParameterGroup.DBParameterGroupFamily -ne $parameterGroupFamily) {
+    throw (
+        "Logging parameter group '$loggingParameterGroup' belongs to " +
+        "'$($matchingParameterGroup.DBParameterGroupFamily)', expected '$parameterGroupFamily'."
+    )
+}
+
+$loggingParameters = @(
+    "ParameterName=log_statement,ParameterValue=none,ApplyMethod=immediate"
+    "ParameterName=log_min_duration_statement,ParameterValue=$slowQueryMilliseconds,ApplyMethod=immediate"
+    "ParameterName=log_parameter_max_length,ParameterValue=0,ApplyMethod=immediate"
+    "ParameterName=log_parameter_max_length_on_error,ParameterValue=0,ApplyMethod=immediate"
+    "ParameterName=log_min_messages,ParameterValue=warning,ApplyMethod=immediate"
+    "ParameterName=log_min_error_statement,ParameterValue=error,ApplyMethod=immediate"
+    "ParameterName=log_lock_waits,ParameterValue=1,ApplyMethod=immediate"
+    "ParameterName=deadlock_timeout,ParameterValue=1000,ApplyMethod=immediate"
+    "ParameterName=log_temp_files,ParameterValue=10240,ApplyMethod=immediate"
+    "ParameterName=log_autovacuum_min_duration,ParameterValue=5000,ApplyMethod=immediate"
+    "ParameterName=rds.force_autovacuum_logging_level,ParameterValue=warning,ApplyMethod=immediate"
+    "ParameterName=log_connections,ParameterValue=0,ApplyMethod=immediate"
+    "ParameterName=log_disconnections,ParameterValue=0,ApplyMethod=immediate"
+    "ParameterName=log_duration,ParameterValue=0,ApplyMethod=immediate"
+)
+aws rds modify-db-cluster-parameter-group `
+    --db-cluster-parameter-group-name $loggingParameterGroup `
+    --parameters $loggingParameters `
+    --profile $Profile `
+    --region $region | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    throw "Unable to configure Aurora PostgreSQL logging parameters."
+}
+
+if ($cluster.DBClusterParameterGroup -ne $loggingParameterGroup) {
+    if ($clusterWasCreated) {
+        aws rds modify-db-cluster `
+            --db-cluster-identifier $clusterIdentifier `
+            --db-cluster-parameter-group-name $loggingParameterGroup `
+            --apply-immediately `
+            --profile $Profile `
+            --region $region | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Unable to attach the PostgreSQL logging parameter group to the new cluster."
+        }
+    } elseif ($ApplyLoggingParameterGroup) {
+        aws rds modify-db-cluster `
+            --db-cluster-identifier $clusterIdentifier `
+            --db-cluster-parameter-group-name $loggingParameterGroup `
+            --no-apply-immediately `
+            --profile $Profile `
+            --region $region | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Unable to schedule the PostgreSQL logging parameter group association."
+        }
+    } else {
+        Write-Warning (
+            "Logging parameters are configured in '$loggingParameterGroup', but the existing " +
+            "cluster still uses '$($cluster.DBClusterParameterGroup)'. Review the pending-reboot " +
+            "impact, then rerun with -ApplyLoggingParameterGroup to schedule the association."
+        )
+    }
+}
+
 aws rds enable-http-endpoint `
     --resource-arn $cluster.DBClusterArn `
     --profile $Profile `
@@ -94,6 +191,39 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $retentionDays = if ($Stage -eq "prod") { 30 } else { 1 }
+$cloudWatchLogRetentionDays = if ($Stage -eq "prod") { 90 } else { 14 }
+$postgresLogGroup = "/aws/rds/cluster/$clusterIdentifier/postgresql"
+$logGroupsJson = aws logs describe-log-groups `
+    --log-group-name-prefix $postgresLogGroup `
+    --profile $Profile `
+    --region $region `
+    --output json
+if ($LASTEXITCODE -ne 0) {
+    throw "Unable to inspect the PostgreSQL CloudWatch log group."
+}
+$logGroups = $logGroupsJson | ConvertFrom-Json
+$logGroupExists = @(
+    $logGroups.logGroups | Where-Object { $_.logGroupName -eq $postgresLogGroup }
+).Count -gt 0
+if (-not $logGroupExists) {
+    aws logs create-log-group `
+        --log-group-name $postgresLogGroup `
+        --profile $Profile `
+        --region $region `
+        --tags "Project=WalkingMeditation,Environment=$Stage,DataClassification=SensitiveResearch,ManagedBy=ExternalPrerequisite" | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Unable to create the PostgreSQL CloudWatch log group."
+    }
+}
+aws logs put-retention-policy `
+    --log-group-name $postgresLogGroup `
+    --retention-in-days $cloudWatchLogRetentionDays `
+    --profile $Profile `
+    --region $region | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    throw "Unable to configure PostgreSQL CloudWatch log retention."
+}
+
 $protectionFlag = if ($Stage -eq "prod") { "--deletion-protection" } else { "--no-deletion-protection" }
 aws rds modify-db-cluster `
     --db-cluster-identifier $clusterIdentifier `
@@ -123,5 +253,11 @@ $cluster = (aws rds describe-db-clusters `
     DatabaseName = "walking_meditation"
     DataApiEnabled = $cluster.HttpEndpointEnabled
     BackupRetentionDays = $retentionDays
+    CloudWatchLogRetentionDays = $cloudWatchLogRetentionDays
+    LoggingParameterGroup = $loggingParameterGroup
+    ActiveParameterGroup = $cluster.DBClusterParameterGroup
+    ParameterGroupStatus = @(
+        $cluster.DBClusterMembers | ForEach-Object { $_.DBClusterParameterGroupStatus }
+    ) -join ","
     Status = $cluster.Status
 } | Format-List

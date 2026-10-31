@@ -104,6 +104,11 @@ def test_generation_stack_has_worker_maintenance_and_schedules(monkeypatch) -> N
         "AWS::Lambda::Function",
         {
             "Handler": "meditation_server.workers.generation.handler",
+            "LoggingConfig": {
+                "ApplicationLogLevel": "INFO",
+                "LogFormat": "JSON",
+                "SystemLogLevel": "INFO",
+            },
             "Environment": {
                 "Variables": assertions.Match.object_like(
                     {
@@ -115,6 +120,17 @@ def test_generation_stack_has_worker_maintenance_and_schedules(monkeypatch) -> N
                         "GENERATION_ARCHIVE_BUCKET": assertions.Match.any_value(),
                     }
                 )
+            },
+        },
+    )
+    template.has_resource_properties(
+        "AWS::Lambda::Function",
+        {
+            "Handler": "meditation_server.workers.maintenance.handler",
+            "LoggingConfig": {
+                "ApplicationLogLevel": "INFO",
+                "LogFormat": "JSON",
+                "SystemLogLevel": "INFO",
             },
         },
     )

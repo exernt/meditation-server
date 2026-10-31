@@ -380,9 +380,15 @@ cluster is an explicit account prerequisite:
 ```
 
 The script calls `create-db-cluster --with-express-configuration`, waits for the
-cluster, enables the Data API and PostgreSQL log export, and configures one-day
-development backup retention. Pass its cluster ARN to CDK as
-`databaseClusterArn`. CDK then creates a separate generated `wm_app` secret.
+cluster, enables the Data API and PostgreSQL log export, configures one-day
+development backup retention, and sets the PostgreSQL CloudWatch log group to
+14-day development retention (90 days in production). It also creates a
+version-matched, privacy-preserving PostgreSQL logging parameter group. New
+clusters receive it before application initialization; existing clusters require
+the explicit `-ApplyLoggingParameterGroup` change-control switch so the
+association is scheduled instead of applied immediately. Pass the cluster ARN
+to CDK as `databaseClusterArn`. CDK then creates a separate generated `wm_app`
+secret.
 Use the IAM master token once with
 `scripts/initialize_aurora_express.py` from the project virtual environment to
 create the database role whose password matches that secret. The equivalent

@@ -164,10 +164,26 @@ Do this for `dev` only while validating on the Free Plan:
 .\scripts\provision-aurora-express.ps1 -Stage dev -Profile wm-admin
 ```
 
-The script uses Express Configuration, then enables the Data API, PostgreSQL log
-export, and one-day backup retention. Copy its `ClusterArn` result into the
-GitHub `dev` variable `DATABASE_CLUSTER_ARN`. Do not create another Aurora
-cluster from the RDS full-configuration path: that is not Free Plan eligible.
+The script uses Express Configuration, then enables the Data API and PostgreSQL
+log export, sets one-day development backup retention, and sets the PostgreSQL
+CloudWatch log group to 14-day retention (90 days in production). It also creates
+and configures a version-matched cluster parameter group with privacy-preserving
+error, slow-query, lock, temporary-file, and autovacuum logging. New clusters get
+that parameter group before application initialization.
+
+For an existing cluster, first run without the parameter-group switch and review
+the named logging group reported by the script. After confirming the cluster's
+pending-reboot state and approved maintenance window, schedule the association:
+
+```powershell
+.\scripts\provision-aurora-express.ps1 -Stage dev -Profile wm-admin -ApplyLoggingParameterGroup
+```
+
+The existing-cluster path does not use `--apply-immediately`; AWS schedules the
+association for the maintenance window. Copy the script's `ClusterArn` result
+into the GitHub `dev` variable `DATABASE_CLUSTER_ARN`. Do not create another
+Aurora cluster from the RDS full-configuration path: that is not Free Plan
+eligible.
 
 ## 8. Perform the one-time database credential handoff
 

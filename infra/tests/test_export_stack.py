@@ -82,6 +82,11 @@ def test_export_stack_has_private_expiring_storage_and_worker(monkeypatch) -> No
         "AWS::Lambda::Function",
         {
             "Handler": "meditation_server.workers.response_exports.handler",
+            "LoggingConfig": {
+                "ApplicationLogLevel": "INFO",
+                "LogFormat": "JSON",
+                "SystemLogLevel": "INFO",
+            },
             "Timeout": 300,
             "Environment": {
                 "Variables": assertions.Match.object_like(
@@ -90,6 +95,17 @@ def test_export_stack_has_private_expiring_storage_and_worker(monkeypatch) -> No
                         "RESPONSE_EXPORT_LINK_BASE": "https://api.example.com/response-exports",
                     }
                 )
+            },
+        },
+    )
+    template.has_resource_properties(
+        "AWS::Lambda::Function",
+        {
+            "Handler": "meditation_server.workers.export_maintenance.handler",
+            "LoggingConfig": {
+                "ApplicationLogLevel": "INFO",
+                "LogFormat": "JSON",
+                "SystemLogLevel": "INFO",
             },
         },
     )

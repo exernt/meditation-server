@@ -159,6 +159,9 @@ class ApiStack(Stack):
             ),
             role=api_role,
             log_group=api_logs,
+            logging_format=lambda_.LoggingFormat.JSON,
+            application_log_level_v2=lambda_.ApplicationLogLevel.INFO,
+            system_log_level_v2=lambda_.SystemLogLevel.INFO,
             timeout=Duration.seconds(25),
             memory_size=1024,
             environment={

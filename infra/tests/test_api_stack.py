@@ -69,6 +69,11 @@ def test_api_lambda_receives_password_reset_link_base(monkeypatch) -> None:
         "AWS::Lambda::Function",
         {
             "Handler": "meditation_server.api.handler.handler",
+            "LoggingConfig": {
+                "ApplicationLogLevel": "INFO",
+                "LogFormat": "JSON",
+                "SystemLogLevel": "INFO",
+            },
             "Environment": {
                 "Variables": assertions.Match.object_like(
                     {"PASSWORD_RESET_LINK_BASE": password_reset_link}
