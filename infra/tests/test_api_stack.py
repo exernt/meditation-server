@@ -73,12 +73,15 @@ def test_api_lambda_receives_password_reset_link_base(monkeypatch) -> None:
         data_stack=data,
         generation_stack=generation,
         export_stack=exports,
+        alert_topic=alerting.topic,
     )
 
-    assertions.Template.from_stack(api).has_resource_properties(
+    template = assertions.Template.from_stack(api)
+    template.has_resource_properties(
         "AWS::Lambda::Function",
         {
             "Handler": "meditation_server.api.handler.handler",
+            "Timeout": 30,
             "LoggingConfig": {
                 "ApplicationLogLevel": "INFO",
                 "LogFormat": "JSON",
@@ -89,5 +92,68 @@ def test_api_lambda_receives_password_reset_link_base(monkeypatch) -> None:
                     {"PASSWORD_RESET_LINK_BASE": password_reset_link}
                 )
             },
+        },
+    )
+    template.resource_count_is("AWS::CloudWatch::Alarm", 5)
+    expected_alarms = {
+        "wm-dev-api-5xx-rate": {
+            "MetricName": "5XXError",
+            "Namespace": "AWS/ApiGateway",
+            "Statistic": "Average",
+            "Threshold": 0.01,
+            "EvaluationPeriods": 3,
+            "DatapointsToAlarm": 2,
+        },
+        "wm-dev-api-5xx-count": {
+            "MetricName": "5XXError",
+            "Namespace": "AWS/ApiGateway",
+            "Statistic": "Sum",
+            "Threshold": 3,
+            "EvaluationPeriods": 1,
+        },
+        "wm-dev-api-lambda-errors": {
+            "MetricName": "Errors",
+            "Namespace": "AWS/Lambda",
+            "Statistic": "Sum",
+            "Threshold": 1,
+            "EvaluationPeriods": 1,
+        },
+        "wm-dev-api-lambda-duration": {
+            "MetricName": "Duration",
+            "Namespace": "AWS/Lambda",
+            "Statistic": "Maximum",
+            "Threshold": 25_000,
+            "EvaluationPeriods": 3,
+            "DatapointsToAlarm": 2,
+        },
+        "wm-dev-api-lambda-throttles": {
+            "MetricName": "Throttles",
+            "Namespace": "AWS/Lambda",
+            "Statistic": "Sum",
+            "Threshold": 1,
+            "EvaluationPeriods": 1,
+        },
+    }
+    alarms = template.find_resources("AWS::CloudWatch::Alarm")
+    assert {alarm["Properties"]["AlarmName"] for alarm in alarms.values()} == set(
+        expected_alarms
+    )
+    for alarm in alarms.values():
+        properties = alarm["Properties"]
+        expected = expected_alarms[properties["AlarmName"]]
+        for key, value in expected.items():
+            assert properties[key] == value
+        assert properties["Period"] == 300
+        assert properties["ComparisonOperator"] == "GreaterThanOrEqualToThreshold"
+        assert properties["TreatMissingData"] == "notBreaching"
+        assert len(properties["AlarmActions"]) == 1
+        assert properties["OKActions"] == properties["AlarmActions"]
+        assert "Fn::ImportValue" in properties["AlarmActions"][0]
+    template.has_resource_properties(
+        "AWS::ApiGateway::Method",
+        {
+            "Integration": assertions.Match.object_like(
+                {"TimeoutInMillis": 29_000}
+            )
         },
     )

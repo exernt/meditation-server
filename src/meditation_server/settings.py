@@ -51,8 +51,16 @@ def _read_secret(secret_arn: str) -> Any:
     if not secret_arn:
         raise ValueError("Secret ARN is not configured")
     import boto3
+    from botocore.config import Config
 
-    value = boto3.client("secretsmanager").get_secret_value(SecretId=secret_arn)
+    value = boto3.client(
+        "secretsmanager",
+        config=Config(
+            connect_timeout=3,
+            read_timeout=10,
+            retries={"total_max_attempts": 2, "mode": "standard"},
+        ),
+    ).get_secret_value(SecretId=secret_arn)
     secret = value.get("SecretString")
     if secret is None:
         raise ValueError("Binary secrets are not supported")

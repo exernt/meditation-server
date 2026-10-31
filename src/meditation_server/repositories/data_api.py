@@ -126,7 +126,7 @@ def _create_client(region_name: str | None) -> Any:
         config=Config(
             retries={"total_max_attempts": 3, "mode": "standard"},
             connect_timeout=5,
-            read_timeout=30,
+            read_timeout=20,
             max_pool_connections=20,
             user_agent_appid="walking-meditation",
         ),

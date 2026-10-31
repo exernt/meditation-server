@@ -3,12 +3,27 @@ from __future__ import annotations
 import asyncio
 import os
 from datetime import UTC, datetime
+from functools import lru_cache
 from pathlib import Path
 from urllib.parse import quote
 
 import boto3
+from botocore.config import Config
 
 from meditation_server import settings
+
+
+@lru_cache(maxsize=4)
+def _ses_client(region: str | None):
+    return boto3.client(
+        "ses",
+        region_name=region,
+        config=Config(
+            connect_timeout=3,
+            read_timeout=10,
+            retries={"total_max_attempts": 2, "mode": "standard"},
+        ),
+    )
 
 
 async def _send(to_address: str, subject: str, body: str) -> None:
@@ -25,7 +40,7 @@ async def _send(to_address: str, subject: str, body: str) -> None:
         )
         return
     sender = os.environ["PASSWORD_RESET_FROM_EMAIL"]
-    client = boto3.client("ses", region_name=os.getenv("AWS_REGION"))
+    client = _ses_client(os.getenv("AWS_REGION"))
     await asyncio.to_thread(
         client.send_email,
         Source=sender,

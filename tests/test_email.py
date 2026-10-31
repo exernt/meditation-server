@@ -59,3 +59,28 @@ def test_password_reset_email_uses_configured_link_base(monkeypatch) -> None:
         "subject": "Reset your Walking Meditation password",
         "body": f"Reset your password: {link_base}#token=token%2F%2B",
     }
+
+
+def test_ses_delivery_uses_bounded_aws_client_timeouts(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class SesClient:
+        pass
+
+    def create_client(service_name: str, **kwargs):
+        captured["service_name"] = service_name
+        captured.update(kwargs)
+        return SesClient()
+
+    monkeypatch.setattr(email.boto3, "client", create_client)
+
+    email._ses_client.cache_clear()
+    assert isinstance(email._ses_client("ap-southeast-2"), SesClient)
+
+    config = captured["config"]
+    assert captured["service_name"] == "ses"
+    assert captured["region_name"] == "ap-southeast-2"
+    assert config.connect_timeout == 3
+    assert config.read_timeout == 10
+    assert config.retries == {"total_max_attempts": 2, "mode": "standard"}
+    email._ses_client.cache_clear()

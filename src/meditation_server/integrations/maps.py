@@ -12,6 +12,7 @@ from meditation_server.api.models import LatLng, RouteStepInfo, WalkRouteRequest
 ROUTES_URL = "https://routes.googleapis.com/directions/v2:computeRoutes"
 PLACES_URL = "https://places.googleapis.com/v1/places:searchText"
 MAX_CANDIDATES_PER_PLACE_TYPE = 3
+MAPS_TIMEOUT_SECONDS = 20
 
 
 def _key() -> str:
@@ -113,7 +114,7 @@ async def _parks(client: httpx.AsyncClient, polyline: str) -> list[dict[str, Any
 
 
 async def generate_walk_route(payload: WalkRouteRequest) -> dict[str, Any]:
-    async with httpx.AsyncClient(timeout=40) as client:
+    async with httpx.AsyncClient(timeout=MAPS_TIMEOUT_SECONDS) as client:
         baseline = await _route(client, payload.source, payload.destination)
         response = {"origin": payload.source.model_dump(), "destination": payload.destination.model_dump(), "total_travel_time": payload.total_travel_time, "baseline": baseline, "parks": []}
         if baseline["duration_s"] > payload.total_travel_time:

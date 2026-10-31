@@ -7,6 +7,9 @@ import threading
 import unittest
 from uuid import UUID
 
+import boto3
+
+from meditation_server.repositories import data_api
 from meditation_server.repositories.data_api import RdsDataApiExecutor
 
 
@@ -165,3 +168,22 @@ class EventLoopResponsivenessTests(unittest.IsolatedAsyncioTestCase):
         event_loop_thread = threading.get_ident()
         await executor.execute("SELECT 1")
         self.assertNotEqual(client.thread_id, event_loop_thread)
+
+
+def test_data_api_client_timeout_is_below_api_lambda_timeout(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+    client = object()
+
+    def create_client(service_name: str, **kwargs):
+        captured["service_name"] = service_name
+        captured.update(kwargs)
+        return client
+
+    monkeypatch.setattr(boto3, "client", create_client)
+
+    assert data_api._create_client("ap-southeast-2") is client
+    config = captured["config"]
+    assert captured["service_name"] == "rds-data"
+    assert captured["region_name"] == "ap-southeast-2"
+    assert config.connect_timeout == 5
+    assert config.read_timeout == 20

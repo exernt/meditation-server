@@ -144,6 +144,27 @@ def test_presigned_download_uses_short_ttl_and_attachment_headers(monkeypatch) -
     assert captured["Params"]["ResponseContentDisposition"] == 'attachment; filename="file.csv"'
 
 
+def test_export_storage_client_timeout_is_below_api_lambda_timeout(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+    client = object()
+
+    def create_client(service_name: str, **kwargs):
+        captured["service_name"] = service_name
+        captured.update(kwargs)
+        return client
+
+    monkeypatch.setattr(response_export_storage.boto3, "client", create_client)
+    response_export_storage._client.cache_clear()
+
+    assert response_export_storage._client("ap-southeast-2") is client
+    config = captured["config"]
+    assert captured["service_name"] == "s3"
+    assert captured["region_name"] == "ap-southeast-2"
+    assert config.connect_timeout == 3
+    assert config.read_timeout == 20
+    response_export_storage._client.cache_clear()
+
+
 def test_completed_unnotified_job_retry_sends_email_without_rebuilding(monkeypatch) -> None:
     export_id = uuid4()
     researcher_id = uuid4()

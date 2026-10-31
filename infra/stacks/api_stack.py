@@ -4,10 +4,13 @@ from pathlib import Path
 
 from aws_cdk import BundlingOptions, Duration, RemovalPolicy, Stack
 from aws_cdk import aws_apigateway as apigateway
+from aws_cdk import aws_cloudwatch as cloudwatch
+from aws_cdk import aws_cloudwatch_actions as cloudwatch_actions
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_lambda as lambda_
 from aws_cdk import aws_logs as logs
 from aws_cdk import aws_secretsmanager as secretsmanager
+from aws_cdk import aws_sns as sns
 from aws_cdk import aws_wafv2 as wafv2
 from cdk_nag import NagSuppressions
 from constructs import Construct
@@ -30,6 +33,7 @@ class ApiStack(Stack):
         data_stack: DataStack,
         generation_stack: GenerationStack,
         export_stack: ExportStack,
+        alert_topic: sns.ITopic,
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -162,7 +166,7 @@ class ApiStack(Stack):
             logging_format=lambda_.LoggingFormat.JSON,
             application_log_level_v2=lambda_.ApplicationLogLevel.INFO,
             system_log_level_v2=lambda_.SystemLogLevel.INFO,
-            timeout=Duration.seconds(25),
+            timeout=Duration.seconds(30),
             memory_size=1024,
             environment={
                 "STAGE": config.stage,
@@ -228,8 +232,134 @@ class ApiStack(Stack):
                 throttling_burst_limit=50,
             ),
         )
-        integration = apigateway.LambdaIntegration(self.function, proxy=True)
+        integration = apigateway.LambdaIntegration(
+            self.function,
+            proxy=True,
+            timeout=Duration.seconds(29),
+        )
         self.api.root.add_proxy(default_integration=integration, any_method=True)
+
+        def notify_on_alarm_and_recovery(alarm: cloudwatch.Alarm) -> None:
+            action = cloudwatch_actions.SnsAction(alert_topic)
+            alarm.add_alarm_action(action)
+            alarm.add_ok_action(action)
+
+        api_metric_dimensions = {
+            "ApiName": self.api.rest_api_name,
+            "Stage": self.api.deployment_stage.stage_name,
+        }
+        api_server_error_rate_alarm = cloudwatch.Alarm(
+            self,
+            "ApiServerErrorRateAlarm",
+            alarm_name=f"{config.prefix}-api-5xx-rate",
+            alarm_description=(
+                "At least 1% of API Gateway requests returned 5xx responses in two "
+                "of three five-minute periods. Inspect API access and Lambda logs."
+            ),
+            metric=cloudwatch.Metric(
+                namespace="AWS/ApiGateway",
+                metric_name="5XXError",
+                dimensions_map=api_metric_dimensions,
+                statistic="Average",
+                period=Duration.minutes(5),
+            ),
+            threshold=0.01,
+            evaluation_periods=3,
+            datapoints_to_alarm=2,
+            comparison_operator=(
+                cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD
+            ),
+            treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING,
+        )
+        notify_on_alarm_and_recovery(api_server_error_rate_alarm)
+
+        api_server_error_count_alarm = cloudwatch.Alarm(
+            self,
+            "ApiServerErrorCountAlarm",
+            alarm_name=f"{config.prefix}-api-5xx-count",
+            alarm_description=(
+                "API Gateway returned at least three 5xx responses in five minutes. "
+                "Inspect API access and Lambda logs."
+            ),
+            metric=cloudwatch.Metric(
+                namespace="AWS/ApiGateway",
+                metric_name="5XXError",
+                dimensions_map=api_metric_dimensions,
+                statistic="Sum",
+                period=Duration.minutes(5),
+            ),
+            threshold=3,
+            evaluation_periods=1,
+            comparison_operator=(
+                cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD
+            ),
+            treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING,
+        )
+        notify_on_alarm_and_recovery(api_server_error_count_alarm)
+
+        lambda_errors_alarm = cloudwatch.Alarm(
+            self,
+            "ApiLambdaErrorsAlarm",
+            alarm_name=f"{config.prefix}-api-lambda-errors",
+            alarm_description=(
+                "The API Lambda reported at least one invocation error in five minutes. "
+                "Inspect the Lambda logs and affected API request."
+            ),
+            metric=self.function.metric_errors(
+                statistic="Sum",
+                period=Duration.minutes(5),
+            ),
+            threshold=1,
+            evaluation_periods=1,
+            comparison_operator=(
+                cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD
+            ),
+            treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING,
+        )
+        notify_on_alarm_and_recovery(lambda_errors_alarm)
+
+        lambda_duration_alarm = cloudwatch.Alarm(
+            self,
+            "ApiLambdaDurationAlarm",
+            alarm_name=f"{config.prefix}-api-lambda-duration",
+            alarm_description=(
+                "An API Lambda invocation took at least 25 seconds in two of three "
+                "five-minute periods, leaving less than five seconds before timeout."
+            ),
+            metric=self.function.metric_duration(
+                statistic="Maximum",
+                period=Duration.minutes(5),
+            ),
+            threshold=25_000,
+            evaluation_periods=3,
+            datapoints_to_alarm=2,
+            comparison_operator=(
+                cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD
+            ),
+            treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING,
+        )
+        notify_on_alarm_and_recovery(lambda_duration_alarm)
+
+        lambda_throttles_alarm = cloudwatch.Alarm(
+            self,
+            "ApiLambdaThrottlesAlarm",
+            alarm_name=f"{config.prefix}-api-lambda-throttles",
+            alarm_description=(
+                "The API Lambda throttled at least one invocation in five minutes. "
+                "Inspect account and reserved concurrency before changing limits."
+            ),
+            metric=self.function.metric_throttles(
+                statistic="Sum",
+                period=Duration.minutes(5),
+            ),
+            threshold=1,
+            evaluation_periods=1,
+            comparison_operator=(
+                cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD
+            ),
+            treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING,
+        )
+        notify_on_alarm_and_recovery(lambda_throttles_alarm)
 
         NagSuppressions.add_resource_suppressions(
             self.api,

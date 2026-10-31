@@ -119,3 +119,7 @@ def test_generate_walk_route_evaluates_gardens_after_infeasible_city_parks(
         "garden-2",
         "garden-3",
     ]
+
+
+def test_map_timeout_is_below_api_lambda_timeout():
+    assert maps.MAPS_TIMEOUT_SECONDS == 20

@@ -82,6 +82,7 @@ if stage is not None:
         data_stack=data,
         generation_stack=generation,
         export_stack=exports,
+        alert_topic=alerting.topic,
         env=environment,
     )
     operations = OperationsStack(

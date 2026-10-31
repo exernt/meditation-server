@@ -80,6 +80,7 @@ def _synthesized_log_groups(
         data_stack=data,
         generation_stack=generation,
         export_stack=exports,
+        alert_topic=alerting.topic,
     )
 
     log_groups: list[dict[str, object]] = []
