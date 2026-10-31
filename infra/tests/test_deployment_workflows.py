@@ -28,7 +28,9 @@ def test_deployment_runs_smoke_tests_with_environment_secrets() -> None:
         encoding="utf-8"
     )
 
-    assert "OutputKey=='ApiBaseUrl'" in workflow
+    assert "--outputs-file cdk-outputs.json" in workflow
+    assert "json.load(open('cdk-outputs.json'" in workflow
+    assert "aws cloudformation describe-stacks" not in workflow
     assert "python scripts/post_deployment_smoke.py" in workflow
     assert "SMOKE_TEST_EMAIL: ${{ secrets.SMOKE_TEST_EMAIL }}" in workflow
     assert "SMOKE_TEST_PASSWORD: ${{ secrets.SMOKE_TEST_PASSWORD }}" in workflow

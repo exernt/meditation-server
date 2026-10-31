@@ -85,7 +85,7 @@ jobs:
             -c responseExportLinkBase=${{ vars.RESPONSE_EXPORT_LINK_BASE }}
             -c ttsProvider=${{ vars.TTS_PROVIDER }}
       - name: Deploy approved stacks
-        run: npx cdk deploy --require-approval never ${{ env.CDK_CONTEXT }} WmAlerting-${{ env.STAGE }} WmData-${{ env.STAGE }} WmGeneration-${{ env.STAGE }} WmExports-${{ env.STAGE }} WmApi-${{ env.STAGE }} WmOperations-${{ env.STAGE }}
+        run: npx cdk deploy --require-approval never --outputs-file cdk-outputs.json ${{ env.CDK_CONTEXT }} WmAlerting-${{ env.STAGE }} WmData-${{ env.STAGE }} WmGeneration-${{ env.STAGE }} WmExports-${{ env.STAGE }} WmApi-${{ env.STAGE }} WmOperations-${{ env.STAGE }}
         env:
           CDK_CONTEXT: >-
             -c stage=${{ env.STAGE }}
@@ -106,12 +106,8 @@ jobs:
         id: deployed_api
         shell: bash
         run: |
-          api_url="$(aws cloudformation describe-stacks \
-            --stack-name "WmApi-${STAGE}" \
-            --region ap-southeast-2 \
-            --query "Stacks[0].Outputs[?OutputKey=='ApiBaseUrl'].OutputValue | [0]" \
-            --output text)"
-          if [[ -z "$api_url" || "$api_url" == "None" ]]; then
+          api_url="$(python -c "import json; print(json.load(open('cdk-outputs.json', encoding='utf-8'))['WmApi-${STAGE}']['ApiBaseUrl'])")"
+          if [[ -z "$api_url" ]]; then
             echo "WmApi-${STAGE} did not expose ApiBaseUrl" >&2
             exit 1
           fi
