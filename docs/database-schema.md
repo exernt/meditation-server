@@ -31,6 +31,8 @@ erDiagram
         boolean email_verified
         text pending_researcher_institution
         timestamptz disabled_at
+        timestamptz privacy_policy_accepted_at
+        integer privacy_policy_version
         timestamptz created_on
     }
 
@@ -116,6 +118,7 @@ erDiagram
         text respondent_code UK
         timestamptz registered_at
         timestamptz consented_at
+        integer consent_version
         timestamptz withdrawn_at
         study_group study_group
     }
@@ -258,6 +261,12 @@ erDiagram
   and questionnaire responses. `feedback.study_id` is also nullable, but a
   linked feedback row is deleted when its study is deleted.
 - `study_registrations` has a composite primary key of `(user_id, study_id)`.
+- `study_registrations.consent_version` is the `consent_form.version` the
+  participant agreed to. A consent form is editable only while its study is a
+  draft, and every change to its text increases `version` by one.
+- `users.privacy_policy_accepted_at` and `users.privacy_policy_version` record
+  when and to which privacy policy version a user agreed at registration. Both
+  are empty for accounts created before this was tracked.
 - The diagram includes columns and relationships, while the migrations also
   define check constraints, partial indexes, defaults, enum values, and compound
   uniqueness rules. Consult the migration SQL before changing application logic.

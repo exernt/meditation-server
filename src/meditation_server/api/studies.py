@@ -11,12 +11,27 @@ from meditation_server.api.dependencies import (
     StudyOwnerDependency,
     VerifiedResearcherDependency,
 )
-from meditation_server.api.models import CreateStudyRequest, EditStudyRequest, JoinStudyRequest, SwapStudyGroupRequest
+from meditation_server.api.models import (
+    CreateStudyRequest,
+    EditConsentFormRequest,
+    EditStudyRequest,
+    JoinStudyRequest,
+    SwapStudyGroupRequest,
+)
 from meditation_server.auth.security import generate_respondent_code
 
 
 router = APIRouter(prefix="/studies", tags=["studies"])
 VALID_STATUSES = {"draft", "recruiting", "active", "closed"}
+
+# Consent wording can only change before anyone can have agreed to it. To allow edits
+# after publishing, widen this set: every join already records the version, and the
+# version bump makes older consents distinguishable.
+CONSENT_EDITABLE_STATUSES = {"draft"}
+
+# Text every new study's consent form starts with. A study cannot be published until
+# its owner replaces it, so participants never see it.
+PLACEHOLDER_CONSENT_TEXT = "Placeholder consent text — to be finalized."
 
 
 def study_response(row):
@@ -58,7 +73,7 @@ async def create_study(payload: CreateStudyRequest, researcher: VerifiedResearch
             {"id": study_id, "name": payload.name, "duration": payload.duration}, transaction=tx,
         )
         await db.execute("INSERT INTO study_created_by (researcher_id,study_id) VALUES (:user::uuid,:study::uuid)", {"user": researcher.id, "study": study_id}, transaction=tx)
-        await db.execute("INSERT INTO consent_form (study_id,body_text,version) VALUES (:study::uuid,:body,1)", {"study": study_id, "body": "Placeholder consent text — to be finalized."}, transaction=tx)
+        await db.execute("INSERT INTO consent_form (study_id,body_text,version) VALUES (:study::uuid,:body,1)", {"study": study_id, "body": PLACEHOLDER_CONSENT_TEXT}, transaction=tx)
     return study_response(result.rows[0])
 
 
@@ -174,6 +189,15 @@ async def join_study(study_id: UUID, payload: JoinStudyRequest, user: CurrentUse
         study = await get_study_row(db, study_id, transaction=tx, lock=True)
         if study["status"] not in {"recruiting", "active"}:
             raise HTTPException(status_code=409, detail="This study is not currently accepting participants")
+        consent = await db.execute("SELECT version FROM consent_form WHERE study_id=:study::uuid", {"study": study_id}, transaction=tx)
+        if not consent.rows:
+            raise HTTPException(status_code=404, detail="Consent form not found")
+        consent_version = consent.rows[0]["version"]
+        if payload.consent_version is not None and payload.consent_version != consent_version:
+            raise HTTPException(
+                status_code=409,
+                detail="The consent form for this study has changed. Please review it again before joining.",
+            )
         await db.execute("SELECT id FROM users WHERE id=:user::uuid FOR UPDATE", {"user": user.id}, transaction=tx)
         current = await db.execute(
             """SELECT sr.study_id FROM study_registrations sr JOIN study s ON s.id=sr.study_id
@@ -189,10 +213,11 @@ async def join_study(study_id: UUID, payload: JoinStudyRequest, user: CurrentUse
         now = datetime.now(UTC)
         if existing.rows:
             result = await db.execute(
-                """UPDATE study_registrations SET registered_at=:now,consented_at=:now,withdrawn_at=NULL
+                """UPDATE study_registrations
+                   SET registered_at=:now,consented_at=:now,consent_version=:consent_version,withdrawn_at=NULL
                    WHERE user_id=:user::uuid AND study_id=:study::uuid
                    RETURNING user_id,study_id,registered_at,consented_at,withdrawn_at""",
-                {"now": now, "user": user.id, "study": study_id}, transaction=tx,
+                {"now": now, "consent_version": consent_version, "user": user.id, "study": study_id}, transaction=tx,
             )
         else:
             counts = await db.execute(
@@ -205,13 +230,14 @@ async def join_study(study_id: UUID, payload: JoinStudyRequest, user: CurrentUse
             group = "control" if count["control_count"] <= count["experimental_count"] else "experimental"
             result = await db.execute(
                 """INSERT INTO study_registrations
-                       (user_id,study_id,registered_at,consented_at,study_group,respondent_code)
-                   VALUES (:user::uuid,:study::uuid,:now,:now,:group::study_group,:respondent_code)
+                       (user_id,study_id,registered_at,consented_at,consent_version,study_group,respondent_code)
+                   VALUES (:user::uuid,:study::uuid,:now,:now,:consent_version,:group::study_group,:respondent_code)
                    RETURNING user_id,study_id,registered_at,consented_at,withdrawn_at""",
                 {
                     "user": user.id,
                     "study": study_id,
                     "now": now,
+                    "consent_version": consent_version,
                     "group": group,
                     "respondent_code": generate_respondent_code(),
                 },
@@ -305,6 +331,10 @@ async def transition(db, study_id: UUID, current: set[str], target: str):
         row = await get_study_row(db, study_id, transaction=tx, lock=True)
         if row["status"] not in current:
             raise HTTPException(status_code=409, detail=f"Cannot move study from '{row['status']}' to '{target}'")
+        if target == "recruiting":
+            consent = await db.execute("SELECT body_text FROM consent_form WHERE study_id=:id::uuid", {"id": study_id}, transaction=tx)
+            if not consent.rows or consent.rows[0]["body_text"].strip() == PLACEHOLDER_CONSENT_TEXT:
+                raise HTTPException(status_code=409, detail="Write the consent form before publishing this study")
         activation_assignment = ",activated_at=now()" if target == "active" else ""
         result = await db.execute(
             """UPDATE study SET status=:target::study_status""" + activation_assignment + """ WHERE id=:id::uuid
@@ -338,6 +368,31 @@ async def consent(study_id: UUID, _user: CurrentUserDependency, db: DatabaseDepe
     if not result.rows:
         raise HTTPException(status_code=404, detail="Consent form not found")
     return dict(result.rows[0])
+
+
+@router.post("/{study_id}/consent-form/edit")
+async def edit_consent_form(study_id: UUID, payload: EditConsentFormRequest, _owner: StudyOwnerDependency, db: DatabaseDependency):
+    async with db.transaction() as tx:
+        # Locking the study serialises this with publishing, so a placeholder form can't slip through.
+        study = await get_study_row(db, study_id, transaction=tx, lock=True)
+        if study["status"] not in CONSENT_EDITABLE_STATUSES:
+            raise HTTPException(status_code=409, detail="The consent form can only be edited while the study is a draft")
+        current = await db.execute(
+            "SELECT study_id,body_text,version FROM consent_form WHERE study_id=:id::uuid FOR UPDATE",
+            {"id": study_id}, transaction=tx,
+        )
+        if not current.rows:
+            raise HTTPException(status_code=404, detail="Consent form not found")
+        form = current.rows[0]
+        # Saving identical text is a no-op so the version only moves on real changes.
+        if payload.body_text != form["body_text"]:
+            result = await db.execute(
+                """UPDATE consent_form SET body_text=:body,version=version+1 WHERE study_id=:id::uuid
+                   RETURNING study_id,body_text,version""",
+                {"body": payload.body_text, "id": study_id}, transaction=tx,
+            )
+            form = result.rows[0]
+    return dict(form)
 
 
 @router.post("/{study_id}/leave")

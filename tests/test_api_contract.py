@@ -59,6 +59,7 @@ EXPECTED_MIGRATED_ROUTES = {
     ("POST", "/studies/{study_id}/activate"),
     ("POST", "/studies/{study_id}/close"),
     ("GET", "/studies/{study_id}/consent-form"),
+    ("POST", "/studies/{study_id}/consent-form/edit"),
     ("POST", "/studies/{study_id}/leave"),
     ("GET", "/studies/{study_id}/feedback"),
     ("POST", "/questionnaires"),
@@ -129,6 +130,8 @@ def test_registration_normalizes_legacy_fields() -> None:
         password="correct horse battery staple",
         gender="  non-binary  ",
         researcher_institution="  University  ",
+        agrees_to_privacy_policy=True,
+        privacy_policy_version=1,
     )
     assert str(request.email) == "person@example.com"
     assert request.gender == "non-binary"

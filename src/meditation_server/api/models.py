@@ -13,6 +13,9 @@ class RegisterRequest(BaseModel):
     gender: str | None = Field(default=None, min_length=1, max_length=100)
     age: int | None = Field(default=None, ge=18, le=120)
     researcher_institution: str | None = Field(default=None, min_length=1, max_length=255)
+    agrees_to_privacy_policy: bool
+    # Version of the privacy policy the user was shown; must be the current one.
+    privacy_policy_version: int = Field(ge=1)
 
     @field_validator("email", mode="before")
     @classmethod
@@ -77,6 +80,19 @@ class CreateStudyRequest(BaseModel):
 
 class JoinStudyRequest(BaseModel):
     agrees_to_consent: bool
+    # Version of the consent form the participant was shown. Optional so older app
+    # builds keep working; when sent, a stale version is rejected.
+    consent_version: int | None = Field(default=None, ge=1)
+
+
+class EditConsentFormRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    body_text: str = Field(min_length=1, max_length=20_000)
+
+    @field_validator("body_text", mode="before")
+    @classmethod
+    def normalize_body_text(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
 
 
 class EditStudyRequest(BaseModel):
