@@ -47,6 +47,8 @@ def test_researcher_registration_defers_profile_until_email_verification(monkeyp
         RegisterRequest(
             email="researcher@example.com",
             password="correct horse battery staple",
+            agrees_to_privacy_policy=True,
+            privacy_policy_version=auth.CURRENT_PRIVACY_POLICY_VERSION,
             researcher_institution="University of Melbourne",
         ),
         database,

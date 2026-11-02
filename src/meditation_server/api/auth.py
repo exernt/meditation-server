@@ -40,6 +40,10 @@ from meditation_server.integrations.email import send_password_reset, send_verif
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
+# Bump this together with the app's PrivacyPolicyActivity.POLICY_VERSION when
+# the policy text changes in a way that requires users to accept it again.
+CURRENT_PRIVACY_POLICY_VERSION = 1
+
 
 def _message(message: str) -> dict[str, str]:
     return {"message": message}
@@ -100,6 +104,16 @@ async def _record_login_failure(db, subjects, user_id, transaction) -> None:
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 async def register(payload: RegisterRequest, db: DatabaseDependency):
+    if not payload.agrees_to_privacy_policy:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You must agree to the privacy policy to register",
+        )
+    if payload.privacy_policy_version != CURRENT_PRIVACY_POLICY_VERSION:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The privacy policy has been updated. Please review it and try again.",
+        )
     existing = await db.execute("SELECT id FROM users WHERE email = :email", {"email": str(payload.email)})
     if existing.rows:
         raise HTTPException(status_code=409, detail="Email is already registered")
@@ -110,11 +124,13 @@ async def register(payload: RegisterRequest, db: DatabaseDependency):
         await db.execute(
             """INSERT INTO users (
                    id, email, password_hash, gender, age, role,
-                   pending_researcher_institution
+                   pending_researcher_institution,
+                   privacy_policy_accepted_at, privacy_policy_version
                )
                VALUES (
                    :id::uuid, :email, :password_hash, :gender, :age,
-                   :role::user_role, :pending_researcher_institution
+                   :role::user_role, :pending_researcher_institution,
+                   :privacy_policy_accepted_at, :privacy_policy_version
                )""",
             {
                 "id": user_id,
@@ -124,6 +140,8 @@ async def register(payload: RegisterRequest, db: DatabaseDependency):
                 "age": payload.age,
                 "role": role,
                 "pending_researcher_institution": payload.researcher_institution,
+                "privacy_policy_accepted_at": datetime.now(UTC),
+                "privacy_policy_version": payload.privacy_policy_version,
             },
             transaction=tx,
         )

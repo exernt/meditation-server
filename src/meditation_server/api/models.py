@@ -10,6 +10,8 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, mo
 class RegisterRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=1024)
+    agrees_to_privacy_policy: bool
+    privacy_policy_version: int = Field(ge=1)
     gender: str | None = Field(default=None, min_length=1, max_length=100)
     age: int | None = Field(default=None, ge=18, le=120)
     researcher_institution: str | None = Field(default=None, min_length=1, max_length=255)

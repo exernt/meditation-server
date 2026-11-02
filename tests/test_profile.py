@@ -55,7 +55,13 @@ def test_profile_rejects_age_outside_study_range(age: int) -> None:
     with pytest.raises(ValueError):
         ProfileUpdateRequest(age=age, gender="Other")
     with pytest.raises(ValueError):
-        RegisterRequest(email="person@example.com", password="valid-password", age=age)
+        RegisterRequest(
+            email="person@example.com",
+            password="valid-password",
+            agrees_to_privacy_policy=True,
+            privacy_policy_version=auth.CURRENT_PRIVACY_POLICY_VERSION,
+            age=age,
+        )
 
 
 def test_update_profile_normalizes_gender_and_persists_both_fields() -> None:
