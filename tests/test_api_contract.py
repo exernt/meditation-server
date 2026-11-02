@@ -9,6 +9,7 @@ import pytest
 from fastapi.routing import iter_route_contexts
 
 from meditation_server.api.app import app
+from meditation_server.api.auth import CURRENT_PRIVACY_POLICY_VERSION
 from meditation_server.api.models import FeedbackRequest, RegisterRequest
 from meditation_server.auth.security import create_access_token, decode_access_token
 from meditation_server.api.models import LatLng, RouteStepInfo, ScriptWithoutParkRequest
@@ -131,7 +132,7 @@ def test_registration_normalizes_legacy_fields() -> None:
         gender="  non-binary  ",
         researcher_institution="  University  ",
         agrees_to_privacy_policy=True,
-        privacy_policy_version=1,
+        privacy_policy_version=CURRENT_PRIVACY_POLICY_VERSION,
     )
     assert str(request.email) == "person@example.com"
     assert request.gender == "non-binary"
