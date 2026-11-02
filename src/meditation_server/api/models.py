@@ -77,6 +77,19 @@ class CreateStudyRequest(BaseModel):
 
 class JoinStudyRequest(BaseModel):
     agrees_to_consent: bool
+    # Optional for compatibility with older app builds. Newer clients send the
+    # version they displayed so the API can reject stale consent submissions.
+    consent_version: int | None = Field(default=None, ge=1)
+
+
+class EditConsentFormRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    body_text: str = Field(min_length=1, max_length=20_000)
+
+    @field_validator("body_text", mode="before")
+    @classmethod
+    def normalize_body_text(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
 
 
 class EditStudyRequest(BaseModel):

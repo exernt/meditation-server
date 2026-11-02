@@ -59,6 +59,7 @@ EXPECTED_MIGRATED_ROUTES = {
     ("POST", "/studies/{study_id}/activate"),
     ("POST", "/studies/{study_id}/close"),
     ("GET", "/studies/{study_id}/consent-form"),
+    ("POST", "/studies/{study_id}/consent-form/edit"),
     ("POST", "/studies/{study_id}/leave"),
     ("GET", "/studies/{study_id}/feedback"),
     ("POST", "/questionnaires"),
