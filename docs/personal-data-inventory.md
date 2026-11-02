@@ -8,11 +8,11 @@ owners must decide the lawful basis, wording, retention, and participant rights.
 
 | Category | Fields/examples | Purpose | Primary location |
 | --- | --- | --- | --- |
-| Account identity | Email address, internal user UUID, role, researcher institution, researcher approval status | Authentication and role-based access; accounts that remain unverified are removed after seven days | Aurora |
+| Account identity | Email address, internal user UUID, role, researcher institution, researcher approval status, privacy policy acceptance time and version | Authentication and role-based access; accounts that remain unverified are removed after seven days | Aurora |
 | Authentication security | Argon2 password hash, hashed refresh/reset/verification tokens, session version, failed-login counters, pseudonymous IP/email throttle hashes, security-event timestamps | Sign-in, recovery, abuse prevention, incident investigation | Aurora; short-lived app storage |
 | Demographics | Age and self-described gender | Study demographics and analysis | Aurora |
 | Study membership | Study ID, participant/researcher IDs, group assignment, registration, consent and withdrawal timestamps | Enrolment and study administration | Aurora |
-| Consent | Consent text/version and acceptance timestamp | Ethics and consent evidence | Aurora |
+| Consent | Consent text/version, the version each participant agreed to, and acceptance timestamp | Ethics and consent evidence | Aurora |
 | Questionnaire data | Questionnaire definitions, issued rounds, answers and submission timestamps | Research data collection | Aurora |
 | Feedback | Rating/comment and associated user/study context where present | Product/research evaluation | Aurora |
 | Location and route data | Origin/destination coordinates, park waypoint, route polylines, step coordinates/instructions, distance, duration, elevation and progress while walking | Route planning and location-triggered meditation | Device memory/cache; transient processing; active Aurora generation job; generated route/script response retained for up to seven days |

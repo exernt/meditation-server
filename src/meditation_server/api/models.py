@@ -10,11 +10,12 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, mo
 class RegisterRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=1024)
-    agrees_to_privacy_policy: bool
-    privacy_policy_version: int = Field(ge=1)
     gender: str | None = Field(default=None, min_length=1, max_length=100)
     age: int | None = Field(default=None, ge=18, le=120)
     researcher_institution: str | None = Field(default=None, min_length=1, max_length=255)
+    agrees_to_privacy_policy: bool
+    # Version of the privacy policy the user was shown; must be the current one.
+    privacy_policy_version: int = Field(ge=1)
 
     @field_validator("email", mode="before")
     @classmethod
@@ -79,8 +80,8 @@ class CreateStudyRequest(BaseModel):
 
 class JoinStudyRequest(BaseModel):
     agrees_to_consent: bool
-    # Optional for compatibility with older app builds. Newer clients send the
-    # version they displayed so the API can reject stale consent submissions.
+    # Version of the consent form the participant was shown. Optional so older app
+    # builds keep working; when sent, a stale version is rejected.
     consent_version: int | None = Field(default=None, ge=1)
 
 

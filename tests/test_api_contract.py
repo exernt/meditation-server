@@ -129,10 +129,10 @@ def test_registration_normalizes_legacy_fields() -> None:
     request = RegisterRequest(
         email="  PERSON@Example.COM ",
         password="correct horse battery staple",
-        agrees_to_privacy_policy=True,
-        privacy_policy_version=CURRENT_PRIVACY_POLICY_VERSION,
         gender="  non-binary  ",
         researcher_institution="  University  ",
+        agrees_to_privacy_policy=True,
+        privacy_policy_version=CURRENT_PRIVACY_POLICY_VERSION,
     )
     assert str(request.email) == "person@example.com"
     assert request.gender == "non-binary"

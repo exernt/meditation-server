@@ -58,9 +58,9 @@ def test_profile_rejects_age_outside_study_range(age: int) -> None:
         RegisterRequest(
             email="person@example.com",
             password="valid-password",
-            agrees_to_privacy_policy=True,
-            privacy_policy_version=auth.CURRENT_PRIVACY_POLICY_VERSION,
             age=age,
+            agrees_to_privacy_policy=True,
+            privacy_policy_version=1,
         )
 
 

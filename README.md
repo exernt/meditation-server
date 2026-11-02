@@ -59,6 +59,7 @@ with issuer/audience/key IDs, opaque hashed refresh tokens, rotation and replay
 revocation, account/IP login throttling, shorter admin sessions, password-reset
 session invalidation, single-device sessions (a new login revokes the previous
 session), and security-event records.
+See [`docs/consent-and-privacy.md`](docs/consent-and-privacy.md) for privacy policy acceptance and study consent forms.
 
 The workload is restricted to `ap-southeast-2`. Amazon Polly is optional and is
 selected with CDK context `ttsProvider=polly|disabled`; the supported voices

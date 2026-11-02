@@ -219,11 +219,17 @@ def test_editing_draft_consent_increments_version() -> None:
     def respond(sql, parameters):
         if sql.startswith("SELECT id,name,duration"):
             return QueryResult(rows=(study_row(study_id, "draft"),))
-        if sql.startswith("UPDATE consent_form"):
-            assert parameters["body_text"] == "I agree to take part."
+        if sql.startswith("SELECT study_id,body_text,version FROM consent_form"):
             return QueryResult(rows=({
                 "study_id": study_id,
-                "body_text": parameters["body_text"],
+                "body_text": "Existing terms",
+                "version": 1,
+            },))
+        if sql.startswith("UPDATE consent_form"):
+            assert parameters["body"] == "I agree to take part."
+            return QueryResult(rows=({
+                "study_id": study_id,
+                "body_text": parameters["body"],
                 "version": 2,
             },))
         raise AssertionError(f"Unexpected SQL: {sql}")
