@@ -1,11 +1,22 @@
 # Walking Meditation server operation guide
 
-Last reviewed against this repository: 31 October 2026
+Last reviewed against this repository: 12 November 2026
 
 This is the primary deployment and operations runbook for `meditation-server`.
 It is intended to be adapted into client instructions, but the procedures here
 are deliberately complete enough for a technically capable operator to follow
 directly. Commands use PowerShell and AWS CLI v2 unless stated otherwise.
+
+The complete documentation set is intentionally limited to four files:
+
+- this operations handbook;
+- `api-reference.md`, the authoritative HTTP contract;
+- `aws-deployment-guide.md`, the fresh-account and deployment procedure; and
+- `testing-guide.md`, the authoritative test commands and acceptance flows.
+
+The deployment and endpoint sections retained here are operational checklists.
+When exact request fields or deployment inputs are needed, use the dedicated
+file above and update both documents if an operational dependency changes.
 
 This guide distinguishes three kinds of statement:
 
@@ -22,19 +33,30 @@ coordinates, or production data into command history, tickets, or chat.
 
 ## 1. Current operational truth
 
-As recorded in the repository, a synthetic `dev` infrastructure baseline was
-verified on 24 October 2026. That record predates deployment of the current
-FastAPI application and workers over the baseline. Production has not been
-deployed. Live Aurora endpoint tests, live Polly/device playback, restore
-testing, workflow failure exercises, WAF rehearsal, and capacity testing remain
-release gates or explicitly recorded post-handover actions.
+The synthetic `dev` infrastructure verified on 24 October 2026 was created in a
+project testing AWS account that will become defunct. It is not the client's
+deployment target, migration source, recovery source, or operational baseline.
+Production has not been deployed.
+
+The client must build from a reviewed repository commit into a new client-owned
+AWS account. Recreate the CDK bootstrap, GitHub OIDC roles, Aurora cluster,
+database schema, secrets, provider keys, SES identity, stacks, URLs, alarms and
+verification evidence there. Do not reuse or migrate account IDs, ARNs, roles,
+credentials, secrets, snapshots, application data, buckets, outputs, logs or
+URLs from the testing account. Decommissioning that account is separate work for
+its owner.
+
+Live Aurora endpoint tests, live Polly/device playback, restore testing,
+workflow failure exercises, WAF rehearsal, and capacity testing must therefore
+be performed again in the client account; historical test-account evidence does
+not satisfy the client's release gates.
 
 Do not infer live state from this document. Verify it using Section 6 every time.
 Do not process real participant data until the public-launch checklist in
 Section 15 has been approved by the client and the appropriate university
 privacy/ethics owners.
 
-The deployed architecture is:
+The target architecture created from this repository is:
 
 - API Gateway REST API -> Python 3.14 FastAPI Lambda;
 - external Aurora PostgreSQL Serverless cluster created with Express
@@ -64,7 +86,7 @@ AWS identities and application administrators are different systems:
 - An **application admin** is a row in Aurora with `users.role = 'admin'` and
   uses admin API endpoints. Application admins receive no AWS access.
 
-Record named primary and backup owners for root custody, billing, security,
+Record the client account owner and named primary and backup contacts for billing, security,
 production approval, database recovery, SES reputation, privacy requests,
 research-data retention, and DLQ incidents. Use maintained client mailboxes for
 alerts, not one student's address.
@@ -111,11 +133,13 @@ For an operator session:
 aws login --profile wm-admin --region ap-southeast-2
 $identity = aws sts get-caller-identity --profile wm-admin --region ap-southeast-2 | ConvertFrom-Json
 $identity
+$expectedAccount = '<CLIENT_AWS_ACCOUNT_ID>'
+if ($identity.Account -ne $expectedAccount) { throw 'Wrong AWS account.' }
 if ($identity.Arn -match ':root$') { throw 'Do not operate as root.' }
 ```
 
-Stop if the account ID or principal is not the intended one. End the session
-when finished:
+Stop if the account ID or principal is not the intended client identity; never
+operate against the former testing account. End the session when finished:
 
 ```powershell
 aws logout --profile wm-admin
@@ -209,9 +233,9 @@ npx cdk diff WmIdentity --profile wm-admin
 npx cdk deploy WmIdentity --profile wm-admin --require-approval broadening
 ```
 
-Record `GitHubDeployerDevRoleArn` and `GitHubDeployerProdRoleArn`. If the
-repository is transferred or renamed, update the OIDC subjects first, verify the
-new workflow, and then remove trust for the old repository.
+Record `GitHubDeployerDevRoleArn` and `GitHubDeployerProdRoleArn`. If the client
+repository owner or name changes, update the OIDC subjects first, verify the new
+workflow, and then remove trust for the old repository identity.
 
 ### 3.4 Shared API Gateway CloudWatch role (Console action)
 
@@ -235,10 +259,15 @@ Do this once. Environment stacks deliberately do not own this shared setting.
 
 ## 4. From-scratch deployment
 
-The following procedure works for `dev`. For production, replace `dev` with
+Follow `aws-deployment-guide.md` from the beginning in the new client account.
+The following operational summary works for `dev`. For production, replace `dev` with
 `prod`, use the `production` GitHub environment, pass `-AllowProduction` when
 provisioning Aurora, set 30-day backup retention after the paid-plan transition,
 and complete every production gate in Section 15.
+
+Before any command, verify `aws sts get-caller-identity` returns the new client
+account. Never use testing-account ARNs, CDK outputs, secrets or profiles as
+placeholders for a client deployment.
 
 ### 4.1 Prerequisites and local validation
 
@@ -517,6 +546,14 @@ aws rds-data execute-statement `
   --include-result-metadata --profile $profile --region $region
 ```
 
+Confirm that the output includes both `0009_consent_version.sql` and
+`0010_privacy_policy_acceptance.sql`. Migration `0009` records the consent-form
+version on every study registration (backfilling existing registrations as
+version 1); migration `0010` adds the nullable privacy-policy acceptance time
+and version to users. The privacy fields remain null for accounts created before
+acceptance tracking was introduced. Do not edit or re-run an applied migration;
+add a new numbered migration for later schema changes.
+
 Verify queue health and alarms in **SQS -> Queues** and **CloudWatch -> Alarms**.
 No source queue should have a steadily increasing oldest-message age; no DLQ
 should contain messages. Alarm names use the `wm-<stage>-` prefix.
@@ -743,7 +780,8 @@ exists.
 Aurora automated backup is continuous and supports point-in-time restore across
 the configured window. Deletion protection is not a backup.
 
-Before destructive migrations and handover, create an approved manual snapshot:
+Before destructive migrations and client production acceptance, create an
+approved manual snapshot in the client account:
 
 ```powershell
 aws rds create-db-cluster-snapshot `
@@ -776,6 +814,63 @@ separate high-impact change-control action.
 - FastAPI currently exposes `/docs`, `/redoc` and `/openapi.json`. Decide whether
   to retain these publicly before launch.
 
+### 9.1 Versioned privacy and study-consent operations
+
+Registration is evidence-bearing. `POST /auth/register` requires
+`agrees_to_privacy_policy: true` and the `privacy_policy_version` displayed by
+the client. The server rejects a false agreement with 400 (missing required
+fields use the normal 422 validation response) and a version other than
+`CURRENT_PRIVACY_POLICY_VERSION` with 409. A successful registration stores the
+server time and accepted version in
+`users.privacy_policy_accepted_at` and `users.privacy_policy_version`, then asks
+the user to verify their email; it does not create a signed-in session.
+
+When approved policy text changes, update these two constants in the same
+release:
+
+- `CURRENT_PRIVACY_POLICY_VERSION` in
+  `src/meditation_server/api/auth.py`;
+- `PrivacyPolicyActivity.POLICY_VERSION` in the Android app.
+
+There is no shared runtime configuration for the two constants. A mismatched
+deployment deliberately prevents registration with 409, so coordinate the app
+and API release and test the deployed pair. Do not bump a version unless the
+corresponding approved policy text is the text actually presented by the app.
+Existing acceptance rows are audit evidence and must not be rewritten as part
+of a version bump. A withdrawal-of-terms workflow is not implemented; account
+deletion and research-data retention must follow the approved procedure in
+Section 8.
+
+Every new study starts in draft with placeholder consent text at version 1. The
+owning researcher replaces it through
+`POST /studies/{study_id}/consent-form/edit`. Text is trimmed and must contain
+1–20,000 characters. A changed save increments the version; an identical save
+does not. Only the owner can edit, only while the study is a draft, and publish
+returns 409 while the placeholder remains. Once published, consent editing is
+locked.
+
+The participant should first read `GET /studies/{study_id}/consent-form`, then
+send the returned positive `version` as `consent_version` with
+`POST /studies/{study_id}/join`. The API stores the current version with the
+acceptance time and returns 409 if the supplied version became stale. Omission
+is supported for older clients and records the current version, but maintained
+clients should always send the version they displayed. Rejoining after a
+withdrawal records the newly accepted current version.
+
+Before releasing either flow, run the focused contract tests:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q `
+  tests/test_privacy_policy_acceptance.py `
+  tests/test_consent_form.py `
+  tests/test_study_consent.py
+```
+
+In a non-production environment, also verify the 400 refusal paths, both stale
+version 409 paths, the email-verification handoff, the placeholder publish
+guard, and the persisted acceptance columns. Use only synthetic accounts and
+studies. The concise behavior reference is `api-reference.md`.
+
 Model shorthand used in the tables:
 
 - `Study` = `{id,name,duration,description,status,control_script_generation_parameters,experimental_script_generation_parameters,control_tts_voice,experimental_tts_voice}`.
@@ -804,7 +899,7 @@ Model shorthand used in the tables:
 
 | Method and path | Auth/input | Expected output |
 | --- | --- | --- |
-| `POST /auth/register` | Public JSON `{email,password(8-1024),gender?,age?(18-120),researcher_institution?(1-255)}` | 201 `{message:"Registration successful; verify your email before signing in"}`; 409 duplicate |
+| `POST /auth/register` | Public JSON `{email,password(8-1024),agrees_to_privacy_policy:true,privacy_policy_version(>=1),gender?,age?(18-120),researcher_institution?(1-255)}` | 201 `{message:"Registration successful; verify your email before signing in"}`; 400 agreement refused; 409 stale policy version or duplicate |
 | `GET /auth/email-verification/open` | Public; fragment `#token=...` used by browser JavaScript | no-store verification HTML |
 | `POST /auth/email-verification/confirm` | Public `{token}` 1-128 | `{message:"Email verified"}`; 400 invalid/used/expired |
 | `POST /auth/email-verification/resend` | Public `{email}` | Always generic `{message:"If that account needs verification, a new link has been sent."}`; 60-second cooldown |
@@ -835,14 +930,15 @@ require an approved researcher as indicated.
 | `GET /studies/mine` | Any user | `{studies:[{study_id,name,duration,description,status,activated_at,study_group,registered_at,consented_at,withdrawn_at,open_questionnaires:[...]}]}` |
 | `GET /studies/current-script-parameters` | Any user | `{participating,study_id,study_status,study_group,script_generation_parameters,tts_voice}`; empty defaults if no active study |
 | `GET /studies/{study_id}` | Any user | `Study`; 404 missing |
-| `POST /studies/{study_id}/join` | `{agrees_to_consent:true}` | 201 `{user_id,study_id,registered_at,consented_at,withdrawn_at}`; balances group assignment; 409 if not accepting/already active elsewhere |
+| `POST /studies/{study_id}/join` | `{agrees_to_consent:true,consent_version?:positive integer}` | 201 `{user_id,study_id,registered_at,consented_at,withdrawn_at}`; records the current consent version and balances group assignment; 400 agreement refused; 409 stale version or already active elsewhere |
 | `POST /studies/{study_id}/getstatus` | Owner | `{name,duration,groups:{control:[{user_id,gender,age}],experimental:[...]}}` |
 | `POST /studies/{study_id}/swapgroup` | Owner; `{user_id,target_group:"control"|"experimental"}` | `{study_id,user_id,group}` |
 | `POST /studies/{study_id}/edit` | Owner; `{column,value}` | Updated `Study`; editable: name, duration, description, both generation-parameter fields, both TTS voice fields |
-| `POST /studies/{study_id}/publish` | Owner; draft only | `Study` with `status:"recruiting"` |
+| `POST /studies/{study_id}/publish` | Owner; draft only | `Study` with `status:"recruiting"`; 409 if consent is missing or still placeholder text |
 | `POST /studies/{study_id}/activate` | Owner; recruiting only | `Study` with `status:"active"` and activation time recorded |
 | `POST /studies/{study_id}/close` | Owner; recruiting/active | `Study` with `status:"closed"` |
 | `GET /studies/{study_id}/consent-form` | Any user | `{study_id,body_text,version}` |
+| `POST /studies/{study_id}/consent-form/edit` | Owner while draft; `{body_text:1..20000}` | `{study_id,body_text,version}`; changed text increments version, identical text does not; 409 after publication |
 | `POST /studies/{study_id}/leave` | Participant | `{user_id,study_id,registered_at,consented_at,withdrawn_at}`; 404 never joined, 409 already left |
 | `GET /studies/{study_id}/feedback` | Owner | `{feedback:[{id,user_id,study_id,category,rating,comment,created_at}]}` |
 | `POST /studies/{study_id}/response-export` | Owner | 202 export object described below |
@@ -1152,9 +1248,11 @@ not part of ordinary application deployment.
 ### Account, access and deployment
 
 - [ ] Paid-plan/credit expiry, budgets, quotas and named billing owner approved.
-- [ ] Root contacts/payment transferred to client; two root MFA methods; no root keys.
+- [ ] The new client account uses client-controlled root contacts/payment, two
+      root MFA methods and no root access keys.
 - [ ] Two named client administrators with MFA and tested least-privilege access.
-- [ ] Break-glass role tested and alarmed; project-team access removal scheduled.
+- [ ] Break-glass role tested and alarmed; any temporary project-team access to
+      the client account has a recorded removal date.
 - [ ] GitHub repository ownership, `main` protection, production reviewers and
       exact OIDC trust verified; no AWS access keys in GitHub.
 - [ ] Permissions boundary, CDK bootstrap termination protection, cdk-nag and
@@ -1170,12 +1268,17 @@ not part of ordinary application deployment.
 - [ ] Client-approved privacy notice and terms exist, with controller/contact,
       purposes, lawful basis, processors, overseas disclosures, retention,
       participant rights and complaint path.
-- [ ] **Launch gap:** registration/login has no privacy-notice/terms presentation,
-      versioned acceptance timestamp or withdrawal-of-terms workflow. Scaffold,
-      migrate and test it before public use.
-- [ ] **Launch gap:** each new study receives literal placeholder consent text;
-      no API exists to author/version/approve consent. Add an owner workflow,
-      immutable published versions and ethics approval evidence before recruitment.
+- [ ] The app presents the approved privacy notice before registration, sends
+      its version and agreement, and does not attempt sign-in until the user has
+      verified the email. Server and Android policy-version constants match.
+- [ ] Registration refusal and stale-policy 409 behavior are tested, and the
+      accepted time/version can be retrieved under the approved audit procedure.
+- [ ] The client/privacy owner has approved how a later policy revision is
+      presented and how withdrawal is handled; no withdrawal-of-terms workflow
+      is currently implemented.
+- [ ] Each study owner replaces the initial placeholder with ethics-approved
+      consent text before publication; owner-only draft editing, version changes,
+      the placeholder publish guard and the post-publication lock are tested.
 - [ ] Study join displays the approved consent version before acceptance; the
       exact version/time is retained and exportable for audit.
 - [ ] Separate disclosure/consent decision covers location processing, free-text
@@ -1233,22 +1336,161 @@ not part of ordinary application deployment.
       are tested on supported devices.
 - [ ] Accessibility and safety review covers walking instructions and audio behavior.
 
-## 16. Change control and handover evidence
+## 16. Change control and client deployment evidence
 
 For every production change record: request/ticket, owner/approver, release
 commit, CDK diff, migration list, affected data, maintenance window, rollback or
 forward-fix plan, backup/snapshot evidence, smoke result, alarms/log review and
 completion time. Never make an unrecorded Console edit to a CDK-managed resource.
 
-At handover, provide the client a non-secret resource inventory, account/Region,
-stack names and statuses, release commit, API URL, architecture, known gaps,
-processor list, approved retention/RPO/RTO, alert routing, restore evidence,
-provider ownership, GitHub environment setup and access-removal record. Transfer
-root details and MFA directly; never record root passwords or recovery codes in
-this repository.
+For the initial client deployment, generate the non-secret resource inventory,
+account/Region, stack names and statuses, release commit, API URL, architecture,
+known gaps, processor list, approved retention/RPO/RTO, alert routing, restore
+evidence, provider ownership and GitHub environment record from the new client
+account. Do not provide the testing account's inventory as a substitute. The
+client owns the new account root details and MFA from account creation; never
+record root passwords or recovery codes in this repository.
 
-Related repository detail remains in `admin.md`, `docs/backup-policy.md`,
-`docs/personal-data-inventory.md`, `docs/github-actions-oidc.md`,
-`docs/production-deployment-rehearsal.md`, `docs/generation-jobs.md`, and
-`docs/response-exports.md`. When those documents and this guide disagree, verify
-the current code/CDK and update both in the same reviewed change.
+## 17. Database schema and migration ownership
+
+The numbered SQL files in `migrations/` are the schema source of truth.
+`wm_schema_migrations` is created by the runner and records version, name,
+SHA-256 checksum, and application time. The runner takes a PostgreSQL advisory
+transaction lock, validates every applied checksum, and commits all pending
+migrations atomically. Never edit an applied migration; add the next numbered
+file and test both a clean install and an upgrade.
+
+| Migration | Operational purpose |
+| --- | --- |
+| `0001_initial_schema.sql` | Users, authentication, studies, questionnaires, responses, feedback and security events |
+| `0002_generation_jobs.sql` | Asynchronous generation jobs and transactional outbox |
+| `0003_user_profile.sql` | User profile evolution |
+| `0004_response_exports.sql` | Pseudonymous respondent codes, export jobs and export outbox |
+| `0005_defer_researcher_profiles_until_email_verification.sql` | Prevents unverified researcher requests entering the approval queue |
+| `0006_study_activation_time.sql` | Records study activation time |
+| `0007_group_script_generation_parameters.sql` | Per-group script controls |
+| `0008_group_tts_voices.sql` | Per-group male/female TTS selection |
+| `0009_consent_version.sql` | Records the consent-form version accepted at join |
+| `0010_privacy_policy_acceptance.sql` | Records privacy-policy acceptance time and version |
+
+The principal relationships are:
+
+```mermaid
+erDiagram
+    USERS ||--o| RESEARCHER_PROFILES : has
+    USERS ||--o{ REFRESH_TOKENS : owns
+    USERS ||--o{ SECURITY_EVENTS : generates
+    USERS ||--o{ STUDY_CREATED_BY : creates
+    STUDY ||--o| CONSENT_FORM : has
+    USERS ||--o{ STUDY_REGISTRATIONS : joins
+    STUDY ||--o{ STUDY_REGISTRATIONS : enrols
+    USERS ||--o{ QUESTIONNAIRES : authors
+    STUDY ||--o{ STUDY_QUESTIONNAIRES : issues
+    QUESTIONNAIRES ||--o{ STUDY_QUESTIONNAIRES : scheduled_as
+    STUDY_QUESTIONNAIRES ||--o{ QUESTIONNAIRE_RESPONSES : collects
+    USERS o|--o{ QUESTIONNAIRE_RESPONSES : submits
+    USERS ||--o{ GENERATION_JOBS : requests
+    GENERATION_JOBS ||--o| GENERATION_OUTBOX : publishes_via
+    USERS ||--o{ RESPONSE_EXPORTS : requests
+    RESPONSE_EXPORTS ||--o| RESPONSE_EXPORT_OUTBOX : publishes_via
+```
+
+Important deletion and integrity behavior:
+
+- `study_registrations` has the composite key `(user_id, study_id)` and a
+  study-scoped random `P-` respondent code.
+- Deleting a user sets `questionnaire_responses.respondent_id` to `NULL` so
+  research answers remain without a direct account reference. The copied
+  respondent code may remain under the approved research-retention policy.
+- Consent form text is mutable only while its study is a draft. Each real text
+  change increments the version; each join records the accepted version.
+- Questionnaire definitions and answers are JSONB but remain validated by the
+  domain layer. Database JSON shape alone is not a sufficient contract.
+- The RDS Console shows cluster topology and metrics, not the relational model.
+  Query Editor is an inspection tool; migrations remain canonical.
+
+## 18. Asynchronous generation and response-export mechanics
+
+Generation and export submissions use the same reliability pattern: the API
+commits the job and an outbox row in one database transaction, then attempts to
+publish only the job ID to SQS. A scheduled maintenance Lambda retries
+unpublished outbox rows every minute. SQS delivery is at-least-once, so workers
+claim rows conditionally with a delivery-specific lease and acknowledge
+duplicate messages for terminal jobs without repeating provider work.
+
+Generation has two active jobs per user and twenty submissions per rolling
+24 hours. The worker enriches route legs through Google services, performs
+three schema-constrained OpenAI calls, and records a deterministic walking-safe
+fallback when provider output fails validation or is unavailable. Exact
+coordinates, polylines, account identifiers, credentials and questionnaire
+answers must not enter the prompt or logs. The request payload is cleared when
+the job becomes terminal; terminal results expire after seven days. Development
+only archives final and reconstructed raw model output in a private seven-day
+S3 bucket. Production has no generation archive.
+
+Response exports snapshot the request-time response count and latest submission
+time, page through the data, and create a UTF-8 CSV with one row per answer (or
+per multiple-choice selection). Files contain the study-scoped
+`respondent_code`, never participant email or UUID. Cells beginning with
+`=`, `+`, `-`, or `@` are prefixed with an apostrophe. The private S3 object and
+application eligibility expire after seven days. The emailed link opens a
+credential form and, after ownership and expiry checks, redirects to a new
+five-minute presigned URL. S3 lifecycle timing is not used as the authorization
+check.
+
+Queue controls are four-day source retention, five receives before DLQ, and
+14-day DLQ retention. Generation workers use a five-minute Lambda timeout, a
+ten-minute database lease, and a 30-minute SQS visibility timeout. Diagnose and
+fix the consumer before redrive; start at low velocity and verify idempotent
+state before and after moving messages.
+
+## 19. Personal-data and processor inventory
+
+The application controls account identity, Argon2 password hashes, hashed
+session/recovery tokens, demographics, study membership and consent evidence,
+questionnaire data, feedback, transient route/location inputs, generation
+requests/results, and sanitised operational metadata. Raw passwords and tokens,
+authorization headers, precise coordinates, questionnaire answers, feedback,
+prompts and generated narration must never be logged.
+
+| Processor/service | Data intentionally sent | Data explicitly excluded |
+| --- | --- | --- |
+| Google Routes/Places/Elevation/Weather | Coordinates, route constraints and nearby-context queries needed for the feature | Email, user UUID, tokens, questionnaire answers |
+| OpenAI | Approved context, route labels/instructions, terrain, nearby features, weather, pacing targets and study parameters | Identity, auth material, raw questionnaire answers, exact coordinates and polylines |
+| Amazon Polly | Narration text and selected voice | Identity, coordinates, membership and research data |
+| Amazon SES | Recipient address and minimal verification/reset/export notification | Demographics, route data, answers and CSV contents |
+| Amazon S3 export bucket | Pseudonymised CSV and questionnaire/study metadata | Participant email, participant UUID, credentials and tokens |
+| CloudWatch, CloudTrail and WAF | Sanitised telemetry and AWS control-plane/security events | Request bodies and sensitive application payloads |
+
+On Android, access/refresh tokens use Keystore-backed encryption. Routes,
+scripts and MP3 files stay in app-private storage excluded from backup/transfer;
+sign-out and account deletion must clear them. Before production, the client and
+university privacy/ethics owners must approve the controller/contact details,
+processor and overseas-disclosure wording, every retention period, participant
+access/correction/export/withdrawal/deletion procedure, and the treatment of
+health-related free text.
+
+## 20. Repository delivery and client deployment acceptance
+
+The repository is delivered for a clean build in the client's new AWS account.
+The testing AWS account, root email, payment method, MFA, credentials, resources,
+data and secrets are not transferred. Client deployment acceptance is complete
+when client operators control the client repository, new account, approved
+delegated roles, production environment reviewers, new provider credentials,
+SES identity, alert mailboxes and break-glass procedure. Exchange any permitted
+project material through an approved confidential channel, never through this
+repository.
+
+From the client account, record its account ID and Region, release commit,
+stack/resource inventory, Aurora identifier, API URL, GitHub OIDC role ARNs,
+active budgets and alarms, backup/restore evidence, open launch gaps, processor
+list and RPO/RTO. The client operator must demonstrate a non-root authenticated
+session, read client-account stack and alarm state, approve a protected
+deployment, complete the synthetic smoke suite, and receive a controlled alert.
+If project-team access was temporarily granted to the client account or
+repository, record its removal after acceptance.
+
+The other three documentation files are the only companion documents. If a
+document and the current source/CDK disagree, treat code and migrations as the
+runtime truth, stop the affected change, and update the documentation in the
+same reviewed commit.
