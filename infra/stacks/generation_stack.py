@@ -368,7 +368,7 @@ class GenerationStack(Stack):
             alarm_name=f"{config.prefix}-generation-dlq-not-empty",
             alarm_description=(
                 "Generation messages exhausted processing retries. Inspect the worker "
-                "logs and DLQ before a controlled redrive; see docs/generation-jobs.md."
+                "logs and DLQ before a controlled redrive; see the operations handbook."
             ),
             metric=self.dead_letter_queue.metric_approximate_number_of_messages_visible(),
             threshold=1,

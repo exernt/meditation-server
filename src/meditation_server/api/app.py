@@ -10,9 +10,8 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 from meditation_server import settings
 from meditation_server.api import auth, feedback, generation_jobs, questionnaires, response_exports, studies, study_questionnaires
 from meditation_server.api.dependencies import CurrentUserDependency, DatabaseDependency, create_executor
-from meditation_server.api.models import ScriptWithParkRequest, ScriptWithoutParkRequest, TtsRequest, WalkRouteRequest
+from meditation_server.api.models import TtsRequest, WalkRouteRequest
 from meditation_server.integrations.maps import generate_walk_route
-from meditation_server.integrations.scripts import with_park, without_park
 from meditation_server.integrations.speech import InvalidSpeechText, SpeechDisabled, synthesize
 from meditation_server.repositories.asyncpg import AsyncpgExecutor
 
@@ -107,24 +106,6 @@ async def route_generate(payload: WalkRouteRequest, _user: CurrentUserDependency
     except Exception as exc:
         logger.exception("Route generation failed")
         raise HTTPException(status_code=502, detail="Route generation failed") from exc
-
-
-@app.post("/route/generate-script/park")
-async def generate_park_script(payload: ScriptWithParkRequest, _user: CurrentUserDependency):
-    try:
-        return await with_park(payload)
-    except Exception as exc:
-        logger.exception("Park script generation failed")
-        raise HTTPException(status_code=502, detail="Script generation failed") from exc
-
-
-@app.post("/route/generate-script/without-park")
-async def generate_baseline_script(payload: ScriptWithoutParkRequest, _user: CurrentUserDependency):
-    try:
-        return await without_park(payload)
-    except Exception as exc:
-        logger.exception("Baseline script generation failed")
-        raise HTTPException(status_code=502, detail="Script generation failed") from exc
 
 
 @app.post("/tts")

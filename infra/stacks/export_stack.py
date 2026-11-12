@@ -277,7 +277,7 @@ class ExportStack(Stack):
             alarm_name=f"{config.prefix}-response-exports-dlq-not-empty",
             alarm_description=(
                 "Response-export messages exhausted processing retries. Inspect the "
-                "worker logs and DLQ before a controlled redrive; see docs/response-exports.md."
+                "worker logs and DLQ before a controlled redrive; see the operations handbook."
             ),
             metric=self.dead_letter_queue.metric_approximate_number_of_messages_visible(),
             threshold=1,
