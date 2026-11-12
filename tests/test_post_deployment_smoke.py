@@ -68,7 +68,6 @@ def successful_responses(*, include_tts: bool = False) -> list[FakeResponse]:
                 "role": "participant",
             }
         ),
-        json_response({"script": {"fallback": True}}),
         json_response(
             {
                 "access_token": "access-2",
@@ -109,15 +108,14 @@ def test_smoke_suite_checks_auth_rotation_and_logout_without_exposing_credential
         "/dev/health/database",
         "/dev/auth/login",
         "/dev/auth/me",
-        "/dev/route/generate-script/without-park",
         "/dev/auth/refresh",
         "/dev/auth/me",
         "/dev/auth/logout",
     ]
     assert json.loads(opener.requests[-1].data) == {"refresh_token": "refresh-2"}
     assert opener.requests[3].get_header("Authorization") == "Bearer access-1"
-    assert opener.requests[6].get_header("Authorization") == "Bearer access-2"
-    assert opener.timeouts == [35.0] * 8
+    assert opener.requests[5].get_header("Authorization") == "Bearer access-2"
+    assert opener.timeouts == [35.0] * 7
 
 
 def test_smoke_suite_can_verify_non_empty_mpeg_tts() -> None:

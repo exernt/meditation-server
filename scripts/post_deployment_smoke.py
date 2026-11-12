@@ -196,25 +196,6 @@ def run_smoke_tests(
         _required_string(profile.get("user_id"), "user_id")
         _required_string(profile.get("role"), "role")
 
-        print("[smoke] Deterministic script generation")
-        generated = client.json(
-            "POST",
-            "/route/generate-script/without-park",
-            payload={
-                "source": {"lat": -37.8136, "lon": 144.9631},
-                "destination": {"lat": -37.8128, "lon": 144.9650},
-                "total_walking_time": 300,
-                "context": "Synthetic post-deployment smoke test",
-                "route_steps": [],
-            },
-            access_token=access_token,
-        )
-        script = generated.get("script")
-        if not isinstance(script, dict) or script.get("fallback") is not True:
-            raise SmokeTestFailure(
-                "Script generation did not return the deterministic fallback response"
-            )
-
         print("[smoke] Refresh-token rotation")
         refreshed = client.json(
             "POST",

@@ -23,8 +23,6 @@ EXPECTED_MIGRATED_ROUTES = {
     ("GET", "/auth/password-reset/open"),
     ("GET", "/study/join"),
     ("POST", "/route/generate-path"),
-    ("POST", "/route/generate-script/park"),
-    ("POST", "/route/generate-script/without-park"),
     ("POST", "/tts"),
     ("POST", "/v1/generation-jobs"),
     ("GET", "/v1/generation-jobs/{job_id}"),

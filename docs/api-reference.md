@@ -220,44 +220,12 @@ forbids extras.
 | `POST /feedback` | Bearer; `{"study_id":uuid|null,"category":"general|study|technical","rating":1..5|null,"comment":string|null}` | 201 feedback row. Rating or comment is required; a study-linked submission requires active participation. |
 | `GET /feedback` | Admin or verified researcher | `{feedback:[...]}` for general feedback only, newest first |
 
-## 8. Route, script generation, and TTS
+## 8. Route and TTS
 
 | Method and path | Input/access | Behavior and output |
 | --- | --- | --- |
 | `POST /route/generate-path` | Bearer; `{source:LatLng,destination:LatLng,total_travel_time:0..14400}` | `{origin,destination,total_travel_time,baseline:{duration_s,distance_m,polyline,steps},parks:[{park,baseline_s,detour_s,to_park_s,park_to_destination_s,added_s,slack_s,polyline_to_park,polyline_from_park,steps_to_park,steps_from_park}]}`; 502 provider failure |
-| `POST /route/generate-script/park` | Bearer; park script payload below | `{script,usage,generation_cost_usd}`; deterministic fallback is explicit as `script.fallback`; 502 unexpected failure |
-| `POST /route/generate-script/without-park` | Bearer; no-park payload below | Same legacy script result shape |
 | `POST /tts` | Bearer; `{"text":"1..3000","voice":"male|female"}` | MP3 bytes, `Content-Type: audio/mpeg`, no-store, inline `narration.mp3`; 409 active-study voice mismatch, 422 invalid speech/SSML, 503 disabled, 502 provider failure |
-
-Park script payload:
-
-```json
-{
-  "source": {"lat": -37.8136, "lon": 144.9631},
-  "destination": {"lat": -37.8128, "lon": 144.9650},
-  "park": {"lat": -37.8130, "lon": 144.9640},
-  "to_park_time": 180,
-  "park_time": 300,
-  "park_to_destination_time": 180,
-  "context": "A quiet walk",
-  "study_parameters": "optional, max 10000 characters",
-  "source_to_park_steps": [],
-  "park_to_destination_steps": []
-}
-```
-
-No-park script payload:
-
-```json
-{
-  "source": {"lat": -37.8136, "lon": 144.9631},
-  "destination": {"lat": -37.8128, "lon": 144.9650},
-  "total_walking_time": 300,
-  "context": "A quiet walk",
-  "study_parameters": "",
-  "route_steps": []
-}
-```
 
 Route output contains `origin`, `destination`, `total_travel_time`, a `baseline`
 with duration/distance/polyline/steps, and `parks` containing detour timings,
@@ -277,12 +245,42 @@ A UUID is recommended.
 ```json
 {
   "kind": "park",
-  "payload": {"...": "the matching park script payload from section 8"}
+  "payload": {"...": "the matching park generation payload below"}
 }
 ```
 
 `kind` is `park` or `without_park`; the nested payload is validated against the
-matching synchronous request model.
+corresponding generation request model.
+
+Park generation payload:
+
+```json
+{
+  "source": {"lat": -37.8136, "lon": 144.9631},
+  "destination": {"lat": -37.8128, "lon": 144.9650},
+  "park": {"lat": -37.8130, "lon": 144.9640},
+  "to_park_time": 180,
+  "park_time": 300,
+  "park_to_destination_time": 180,
+  "context": "A quiet walk",
+  "study_parameters": "optional, max 10000 characters",
+  "source_to_park_steps": [],
+  "park_to_destination_steps": []
+}
+```
+
+No-park generation payload:
+
+```json
+{
+  "source": {"lat": -37.8136, "lon": 144.9631},
+  "destination": {"lat": -37.8128, "lon": 144.9650},
+  "total_walking_time": 300,
+  "context": "A quiet walk",
+  "study_parameters": "",
+  "route_steps": []
+}
+```
 
 | Method and path | Behavior and output |
 | --- | --- |

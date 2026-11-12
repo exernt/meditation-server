@@ -979,10 +979,8 @@ questions reference a named scale with integer min/max or integer-value options.
 | Method and path | Input/access | Expected output |
 | --- | --- | --- |
 | `POST /route/generate-path` | Bearer; `{source:LatLng,destination:LatLng,total_travel_time:0..14400}` | `{origin,destination,total_travel_time,baseline:{duration_s,distance_m,polyline,steps},parks:[{park,baseline_s,detour_s,to_park_s,park_to_destination_s,added_s,slack_s,polyline_to_park,polyline_from_park,steps_to_park,steps_from_park}]}`; 502 provider failure |
-| `POST /route/generate-script/park` | Bearer; source/destination/park, three 0..14400 duration fields, context 1..1000, optional study parameters <=10000, two step lists | `{script,usage,generation_cost_usd}` in legacy script shape; deterministic fallback is explicit in `script.fallback`; 502 unexpected failure |
-| `POST /route/generate-script/without-park` | Bearer; source/destination, total walking time 0..14400, context, optional study parameters, route steps | Same script response shape |
 | `POST /tts` | Bearer; `{text:1..3000,voice:"male"|"female"}` | MP3 bytes with `Content-Type: audio/mpeg`; 409 voice differs from active study, 422 invalid speech, 503 disabled, 502 Polly failure |
-| `POST /v1/generation-jobs` | Bearer; header `Idempotency-Key` 16-128 `[A-Za-z0-9._:-]`; `{kind:"park"|"without_park",payload:<matching script request>}` | 202 `Job` plus `created:boolean`; same key/body returns original, changed body 409, quota 429 |
+| `POST /v1/generation-jobs` | Bearer; header `Idempotency-Key` 16-128 `[A-Za-z0-9._:-]`; `{kind:"park"|"without_park",payload:<matching generation request>}` | 202 `Job` plus `created:boolean`; same key/body returns original, changed body 409, quota 429 |
 | `GET /v1/generation-jobs/{job_id}` | Owning bearer | `Job`; 404 hides non-owned jobs |
 | `GET /v1/generation-jobs/{job_id}/result` | Owning bearer | 202 `{job_id,status}` + `Retry-After: 2` while queued/running; complete `{job_id,...result}`; failed 409 with stable error code |
 

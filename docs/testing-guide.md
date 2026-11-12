@@ -238,9 +238,9 @@ Use synthetic Melbourne coordinates with no connection to a participant.
 
 1. Test a baseline route and park candidates; validate duration, distance,
    polylines and step indexing.
-2. Submit synchronous park and no-park generation. Confirm the legacy response
-   shape and explicit `script.fallback` flag.
-3. Submit an asynchronous job with a UUID idempotency key. Confirm same key/body
+2. Submit park and no-park generation jobs with UUID idempotency keys. Confirm
+   the completed results include an explicit `script.fallback` flag.
+3. Confirm same key/body
    returns the same job, changed body returns 409, status/result ownership hides
    another user's job, and incomplete result returns 202 with `Retry-After: 2`.
 4. Exercise the two-active and rolling-24-hour quota responses.
